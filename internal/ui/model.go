@@ -924,6 +924,12 @@ func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
 						for k, v := range r.Headers {
 							dup.Headers[k] = v
 						}
+						if r.Auth != nil {
+							dup.Auth = &storage.BasicAuth{
+								Username: r.Auth.Username,
+								Password: r.Auth.Password,
+							}
+						}
 						collections[i].Requests = append(collections[i].Requests, dup)
 						if err := storage.SaveCollection(collections[i]); err != nil {
 							return ErrMsg{Err: err}
