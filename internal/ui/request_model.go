@@ -18,6 +18,7 @@ const (
 	SectionPathParams
 	SectionQueryParams
 	SectionHeaders
+	SectionAuth
 	SectionBody
 )
 
@@ -47,6 +48,12 @@ type RequestModel struct {
 	headerInputs     []KVInput
 	queryInputs      []KVInput
 
+	// Auth Fields
+	authUsername textinput.Model
+	authPassword textinput.Model
+	authEnabled  bool
+	authFocusIdx int // 0=username, 1=password
+
 	// State
 	focusedSection RequestSection
 	focusedIndex   int // index within a section's list (e.g., which header)
@@ -69,11 +76,23 @@ func NewRequestModel() RequestModel {
 	bodyInput.SetWidth(50)
 	bodyInput.SetHeight(10)
 
+	authUser := textinput.New()
+	authUser.Placeholder = "Username"
+	authUser.Width = 30
+
+	authPass := textinput.New()
+	authPass.Placeholder = "Password"
+	authPass.Width = 30
+	authPass.EchoMode = textinput.EchoPassword
+	authPass.EchoCharacter = '•'
+
 	return RequestModel{
 		methods:          []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"},
 		methodIndex:      0,
 		pathInput:        pathInput,
 		bodyInput:        bodyInput,
+		authUsername:     authUser,
+		authPassword:     authPass,
 		focusedSection:   SectionURL,
 		focusedIndex:     1, // Start on URL
 		pathParamsInputs: []KVInput{},
@@ -126,8 +145,17 @@ func (m *RequestModel) LoadRequest(req storage.Request, baseURL string) {
 	if len(m.headerInputs) == 0 {
 		m.addRow(&m.headerInputs, "", "")
 	}
-	// Path param rows are managed by parseURLParams
-	// Query params rows are managed by parseURLParams
+
+	// Load auth
+	if req.Auth != nil {
+		m.authUsername.SetValue(req.Auth.Username)
+		m.authPassword.SetValue(req.Auth.Password)
+		m.authEnabled = true
+	} else {
+		m.authUsername.SetValue("")
+		m.authPassword.SetValue("")
+		m.authEnabled = false
+	}
 
 	m.focusedSection = SectionURL
 	m.focusedIndex = 1 // Focus URL
@@ -317,6 +345,15 @@ func (m RequestModel) Update(msg tea.Msg) (RequestModel, tea.Cmd) {
 			m.updateFocus()
 			return m, nil
 
+		case "ctrl+b": // Toggle Basic Auth
+			m.authEnabled = !m.authEnabled
+			if m.authEnabled {
+				m.focusedSection = SectionAuth
+				m.authFocusIdx = 0
+			}
+			m.updateFocus()
+			return m, nil
+
 		case "tab":
 			m.nextField()
 			return m, nil
@@ -447,6 +484,13 @@ func (m RequestModel) Update(msg tea.Msg) (RequestModel, tea.Cmd) {
 			}
 			cmds = append(cmds, cmd)
 		}
+	case SectionAuth:
+		if m.authFocusIdx == 0 {
+			m.authUsername, cmd = m.authUsername.Update(msg)
+		} else {
+			m.authPassword, cmd = m.authPassword.Update(msg)
+		}
+		cmds = append(cmds, cmd)
 	case SectionBody:
 		oldVal := m.bodyInput.Value()
 		m.bodyInput, cmd = m.bodyInput.Update(msg)
@@ -522,9 +566,21 @@ func (m *RequestModel) nextField() {
 			m.focusedIndex++
 			m.isKeyFocused = true
 			if m.focusedIndex >= len(m.headerInputs) {
-				m.focusedSection = SectionBody
-				m.focusedIndex = 0
+				if m.authEnabled {
+					m.focusedSection = SectionAuth
+					m.authFocusIdx = 0
+				} else {
+					m.focusedSection = SectionBody
+					m.focusedIndex = 0
+				}
 			}
+		}
+	case SectionAuth:
+		m.authFocusIdx++
+		if m.authFocusIdx > 1 {
+			m.focusedSection = SectionBody
+			m.focusedIndex = 0
+			m.authFocusIdx = 0
 		}
 	case SectionBody:
 		m.focusedSection = SectionURL
@@ -576,10 +632,23 @@ func (m *RequestModel) prevField() {
 				m.focusedIndex = max(0, len(m.queryInputs)-1)
 			}
 		}
+	case SectionAuth:
+		m.authFocusIdx--
+		if m.authFocusIdx < 0 {
+			m.focusedSection = SectionHeaders
+			m.focusedIndex = max(0, len(m.headerInputs)-1)
+			m.isKeyFocused = false
+			m.authFocusIdx = 0
+		}
 	case SectionBody:
-		m.focusedSection = SectionHeaders
-		m.focusedIndex = max(0, len(m.headerInputs)-1)
-		m.isKeyFocused = false
+		if m.authEnabled {
+			m.focusedSection = SectionAuth
+			m.authFocusIdx = 1
+		} else {
+			m.focusedSection = SectionHeaders
+			m.focusedIndex = max(0, len(m.headerInputs)-1)
+			m.isKeyFocused = false
+		}
 	}
 	m.updateFocus()
 }
@@ -587,6 +656,8 @@ func (m *RequestModel) prevField() {
 func (m *RequestModel) updateFocus() {
 	m.pathInput.Blur()
 	m.bodyInput.Blur()
+	m.authUsername.Blur()
+	m.authPassword.Blur()
 	
 	for i := range m.pathParamsInputs {
 		m.pathParamsInputs[i].value.Blur()
@@ -625,6 +696,12 @@ func (m *RequestModel) updateFocus() {
 				m.headerInputs[m.focusedIndex].value.Focus()
 			}
 		}
+	case SectionAuth:
+		if m.authFocusIdx == 0 {
+			m.authUsername.Focus()
+		} else {
+			m.authPassword.Focus()
+		}
 	case SectionBody:
 		m.bodyInput.Focus()
 	}
@@ -639,10 +716,6 @@ func (m *RequestModel) buildRequest() (storage.Request, string) {
 		Body:    m.bodyInput.Value(),
 	}
 
-	// We use pathInput as source of truth for base URL structure
-	// Queries are synced into pathInput so it contains them.
-	// But we need to handle Path Params (:param) substitution for the ACTUAL execution URL.
-	
 	rawURL := m.pathInput.Value()
 	
 	// Apply path params substitutions
@@ -655,16 +728,20 @@ func (m *RequestModel) buildRequest() (storage.Request, string) {
 		}
 	}
 	
-	// Apply query params (already in URL mostly, but let's be safe)
-	// Actually, if we use m.pathInput.Value(), it relies on syncURLFromParams working perfectly.
-	// Let's assume it does.
-	
 	req.URL = rawURL // Saved request keeps the :params
 	
 	// Headers
 	for _, hi := range m.headerInputs {
 		if hi.key.Value() != "" {
 			req.Headers[hi.key.Value()] = hi.value.Value()
+		}
+	}
+
+	// Basic Auth
+	if m.authEnabled && m.authUsername.Value() != "" {
+		req.Auth = &storage.BasicAuth{
+			Username: m.authUsername.Value(),
+			Password: m.authPassword.Value(),
 		}
 	}
 
@@ -728,6 +805,37 @@ func (m RequestModel) View() string {
 	sb.WriteString(HeaderStyle.Render("QUERY PARAMS"))
 	sb.WriteString("\n")
 	sb.WriteString(m.renderKVSection(m.queryInputs, SectionQueryParams))
+	sb.WriteString("\n")
+
+	// Auth
+	authLabel := "AUTH"
+	if m.authEnabled {
+		authLabel = "AUTH (Basic ✓)"
+	}
+	sb.WriteString(HeaderStyle.Render(authLabel))
+	sb.WriteString("\n")
+	if m.authEnabled {
+		userPrefix := "  "
+		passPrefix := "  "
+		if m.focusedSection == SectionAuth && m.authFocusIdx == 0 {
+			userPrefix = "> "
+		}
+		if m.focusedSection == SectionAuth && m.authFocusIdx == 1 {
+			passPrefix = "> "
+		}
+		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center,
+			SelectedStyle.Render(userPrefix),
+			DimStyle.Render("User: "),
+			m.authUsername.View(),
+		) + "\n")
+		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center,
+			SelectedStyle.Render(passPrefix),
+			DimStyle.Render("Pass: "),
+			m.authPassword.View(),
+		) + "\n")
+	} else {
+		sb.WriteString(DimStyle.Render("  Disabled (Ctrl+B to enable)") + "\n")
+	}
 	sb.WriteString("\n")
 
 	// Body

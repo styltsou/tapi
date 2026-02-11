@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/styltsou/tapi/internal/storage"
 )
 
 func TestRequestModel_ParseURLParams(t *testing.T) {
@@ -97,5 +99,147 @@ func TestRequestModel_SyncURLFromParams(t *testing.T) {
 	expected := "https://api.com/endpoint?sort=asc"
 	if m.pathInput.Value() != expected {
 		t.Errorf("Expected URL '%s', got '%s'", expected, m.pathInput.Value())
+	}
+}
+
+func TestRequestModel_LoadRequest_WithAuth(t *testing.T) {
+	m := NewRequestModel()
+
+	req := storage.Request{
+		Name:   "Auth Request",
+		Method: "POST",
+		URL:    "/api/login",
+		Auth: &storage.BasicAuth{
+			Username: "testuser",
+			Password: "testpass",
+		},
+	}
+
+	m.LoadRequest(req, "http://example.com")
+
+	if !m.authEnabled {
+		t.Error("Expected authEnabled to be true after loading request with auth")
+	}
+	if m.authUsername.Value() != "testuser" {
+		t.Errorf("authUsername = %q, want %q", m.authUsername.Value(), "testuser")
+	}
+	if m.authPassword.Value() != "testpass" {
+		t.Errorf("authPassword = %q, want %q", m.authPassword.Value(), "testpass")
+	}
+}
+
+func TestRequestModel_LoadRequest_WithoutAuth(t *testing.T) {
+	m := NewRequestModel()
+
+	// First load a request with auth to set state
+	m.LoadRequest(storage.Request{
+		Name: "First", Method: "GET", URL: "/first",
+		Auth: &storage.BasicAuth{Username: "user1", Password: "pass1"},
+	}, "")
+
+	if !m.authEnabled {
+		t.Fatal("Expected auth to be enabled after first load")
+	}
+
+	// Now load a request without auth — should clear everything
+	m.LoadRequest(storage.Request{
+		Name: "Second", Method: "GET", URL: "/second",
+	}, "")
+
+	if m.authEnabled {
+		t.Error("Expected authEnabled to be false after loading request without auth")
+	}
+	if m.authUsername.Value() != "" {
+		t.Errorf("authUsername should be empty, got %q", m.authUsername.Value())
+	}
+	if m.authPassword.Value() != "" {
+		t.Errorf("authPassword should be empty, got %q", m.authPassword.Value())
+	}
+}
+
+func TestRequestModel_BuildRequest_WithAuth(t *testing.T) {
+	m := NewRequestModel()
+
+	m.LoadRequest(storage.Request{
+		Name: "Auth Req", Method: "GET", URL: "/protected",
+		Auth: &storage.BasicAuth{Username: "admin", Password: "secret"},
+	}, "")
+
+	req, _ := m.buildRequest()
+
+	if req.Auth == nil {
+		t.Fatal("Expected Auth in built request")
+	}
+	if req.Auth.Username != "admin" {
+		t.Errorf("Auth.Username = %q, want %q", req.Auth.Username, "admin")
+	}
+	if req.Auth.Password != "secret" {
+		t.Errorf("Auth.Password = %q, want %q", req.Auth.Password, "secret")
+	}
+}
+
+func TestRequestModel_BuildRequest_AuthDisabled(t *testing.T) {
+	m := NewRequestModel()
+
+	m.LoadRequest(storage.Request{
+		Name: "Auth Req", Method: "GET", URL: "/protected",
+		Auth: &storage.BasicAuth{Username: "admin", Password: "secret"},
+	}, "")
+
+	// Now disable auth
+	m.authEnabled = false
+
+	req, _ := m.buildRequest()
+
+	if req.Auth != nil {
+		t.Errorf("Expected nil Auth when disabled, got %+v", req.Auth)
+	}
+}
+
+func TestRequestModel_BuildRequest_NoAuth(t *testing.T) {
+	m := NewRequestModel()
+
+	m.LoadRequest(storage.Request{
+		Name: "Plain Req", Method: "GET", URL: "/public",
+	}, "")
+
+	req, _ := m.buildRequest()
+
+	if req.Auth != nil {
+		t.Errorf("Expected nil Auth for request without auth, got %+v", req.Auth)
+	}
+}
+
+func TestRequestModel_AuthToggle(t *testing.T) {
+	m := NewRequestModel()
+
+	// Initially disabled
+	if m.authEnabled {
+		t.Error("Auth should be disabled by default")
+	}
+
+	// Toggle on
+	m.authEnabled = true
+	m.authUsername.SetValue("user")
+	m.authPassword.SetValue("pass")
+
+	req, _ := m.buildRequest()
+	if req.Auth == nil {
+		t.Fatal("Expected Auth after enabling")
+	}
+	if req.Auth.Username != "user" || req.Auth.Password != "pass" {
+		t.Errorf("Auth credentials mismatch: got %+v", req.Auth)
+	}
+
+	// Toggle off — credentials remain in fields but buildRequest excludes them
+	m.authEnabled = false
+	req2, _ := m.buildRequest()
+	if req2.Auth != nil {
+		t.Error("Expected nil Auth after disabling")
+	}
+
+	// Fields should still have values (not cleared on disable)
+	if m.authUsername.Value() != "user" {
+		t.Error("Username field should retain value when auth is disabled")
 	}
 }

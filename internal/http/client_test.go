@@ -114,3 +114,51 @@ func TestClient_Execute_RequestData(t *testing.T) {
 		t.Errorf("Expected body test-body, got %s", capturedBody)
 	}
 }
+
+func TestClient_Execute_BasicAuth(t *testing.T) {
+	var capturedAuth string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient()
+
+	// Test with Basic Auth
+	req := storage.Request{
+		Method: "GET",
+		URL:    server.URL,
+		Auth: &storage.BasicAuth{
+			Username: "admin",
+			Password: "secret123",
+		},
+	}
+
+	_, err := client.Execute(req, "")
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	if capturedAuth == "" {
+		t.Fatal("Expected Authorization header to be set")
+	}
+	if capturedAuth != "Basic YWRtaW46c2VjcmV0MTIz" {
+		t.Errorf("Unexpected Authorization header: %s", capturedAuth)
+	}
+
+	// Test without Basic Auth
+	capturedAuth = ""
+	reqNoAuth := storage.Request{
+		Method: "GET",
+		URL:    server.URL,
+	}
+	_, err = client.Execute(reqNoAuth, "")
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if capturedAuth != "" {
+		t.Errorf("Expected no Authorization header, got: %s", capturedAuth)
+	}
+}
