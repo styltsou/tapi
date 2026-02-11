@@ -1,0 +1,838 @@
+package ui
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/charmbracelet/bubbles/help"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/styltsou/tapi/internal/http"
+	"github.com/styltsou/tapi/internal/logger"
+	"github.com/styltsou/tapi/internal/storage"
+)
+
+// Pane represents the focusable areas of the dashboard
+type Pane int
+
+const (
+	PaneCollections Pane = iota
+	PaneRequest
+	PaneResponse
+)
+
+const (
+	minWidth  = 100
+	minHeight = 20
+)
+
+// InputMode represents Normal or Insert mode (Vim-style)
+type InputMode int
+
+const (
+	ModeNormal InputMode = iota
+	ModeInsert
+)
+
+// Model is the main application model that manages state and sub-models
+type Model struct {
+	state       ViewState
+	focusedPane Pane
+	request     RequestModel
+	response    ResponseModel
+	collections CollectionsModel
+	welcome     WelcomeModel
+	env         EnvModel
+	envEditor   EnvEditorModel
+	input       InputModel
+	menu        CommandMenuModel
+	collectionSelector CollectionSelectorModel
+	help        help.Model
+	keys        KeyMap
+	width       int
+	height      int
+	tooSmall    bool
+	sidebarVisible bool
+
+	// Vim-style mode
+	mode         InputMode
+	leaderActive bool
+
+	// HTTP client
+	httpClient *http.Client
+
+	// Current context
+	currentCollection *storage.Collection
+	currentEnv        *storage.Environment
+
+	// Status line
+	statusText  string
+	statusIsErr bool
+}
+
+// NewModel creates a new main model with initial state
+func NewModel() Model {
+	return Model{
+		state:       ViewWelcome,
+		focusedPane: PaneCollections,
+		keys:        DefaultKeyMap(),
+		httpClient:  http.NewClient(),
+		sidebarVisible: true,
+		mode:         ModeNormal,
+
+		// Initialize sub-models
+		request:     NewRequestModel(),
+		response:    NewResponseModel(),
+		collections: NewCollectionsModel(),
+		welcome:     NewWelcomeModel(),
+		env:         NewEnvModel(),
+		envEditor:   NewEnvEditorModel(),
+		input:       NewInputModel("", "", nil, nil),
+		menu:        NewCommandMenuModel(),
+		collectionSelector: NewCollectionSelectorModel(),
+		help:        help.New(),
+	}
+}
+
+// Init initializes the model and returns initial commands
+func (m Model) Init() tea.Cmd {
+	logger.Logger.Info("Initializing TUI")
+
+	return tea.Batch(
+		tea.EnterAltScreen,
+		loadCollectionsCmd(),
+		loadEnvsCmd(),
+	)
+}
+
+// Update handles all messages and updates the model
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+		// Check minimum dimensions
+		if m.width < minWidth || m.height < minHeight {
+			m.tooSmall = true
+			return m, nil
+		}
+		m.tooSmall = false
+
+		// Dashboard layout calculation
+		sidebarWidth := 0
+		if m.sidebarVisible {
+			sidebarWidth = 30
+			if m.width < 120 {
+				sidebarWidth = 25
+			}
+		}
+		
+		remainingWidth := max(0, m.width-sidebarWidth)
+		requestWidth := remainingWidth / 2
+		responseWidth := max(0, remainingWidth-requestWidth)
+
+		contentHeight := max(0, msg.Height-4) // header(1) + status(1) + help(1) + spacing(1)
+
+		m.collections.SetSize(sidebarWidth, contentHeight)
+		m.request.SetSize(requestWidth, contentHeight)
+		m.response.SetSize(responseWidth, contentHeight)
+		m.welcome.SetSize(msg.Width, msg.Height)
+		
+		m.env.SetSize(msg.Width, msg.Height)
+		m.envEditor.SetSize(msg.Width, msg.Height)
+		m.menu.SetSize(msg.Width, msg.Height)
+		m.collectionSelector.SetSize(msg.Width, msg.Height)
+
+		logger.Logger.Debug("Window resized", "width", msg.Width, "height", msg.Height)
+		return m, nil
+
+	case tea.KeyMsg:
+		// Always allow Ctrl+C to quit
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+
+		// If a modal is open, route to it
+		if m.menu.visible || m.env.visible || m.state == ViewEnvEditor || m.collectionSelector.visible || m.state == ViewInput {
+			// Let modals handle their own keys (handled below in routing section)
+			break
+		}
+
+		// Welcome screen has its own key handling
+		if m.state == ViewWelcome {
+			newWelcome, welcomeCmd := m.welcome.Update(msg)
+			m.welcome = newWelcome
+			return m, welcomeCmd
+		}
+
+		// --- Leader Key Handling (Normal mode only) ---
+		if m.mode == ModeNormal && m.leaderActive {
+			m.leaderActive = false
+			switch msg.String() {
+			case "e":
+				m.sidebarVisible = !m.sidebarVisible
+				if m.sidebarVisible {
+					m.focusedPane = PaneCollections
+				} else {
+					m.focusedPane = PaneRequest
+				}
+				return m.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+			case "c":
+				m.collectionSelector.visible = true
+				return m, nil
+			case "v":
+				m.env.visible = !m.env.visible
+				return m, nil
+			case "r":
+				// Trigger request execution from request model
+				req, targetedURL := m.request.buildRequest()
+				return m, func() tea.Msg {
+					return ExecuteRequestMsg{Request: req, BaseURL: m.request.baseURL, TargetedURL: targetedURL}
+				}
+			case "s":
+				req, _ := m.request.buildRequest()
+				return m, func() tea.Msg {
+					return SaveRequestMsg{Request: req}
+				}
+			case "p":
+				m.focusedPane = PaneRequest
+				return m, nil
+			case "o":
+				m.request.preview = !m.request.preview
+				return m, nil
+			case "k":
+				m.menu.visible = true
+				m.env.visible = false
+				m.collectionSelector.visible = false
+				return m, nil
+			case "q":
+				return m, tea.Quit
+			default:
+				// Unknown chord, ignore
+				return m, nil
+			}
+		}
+
+		// --- Normal Mode ---
+		if m.mode == ModeNormal {
+			switch msg.String() {
+			case " ":
+				m.leaderActive = true
+				return m, nil
+			case "i", "enter":
+				// Enter Insert mode
+				m.mode = ModeInsert
+				return m, nil
+			case "tab":
+				// Cycle focus between panes
+				if m.sidebarVisible {
+					switch m.focusedPane {
+					case PaneCollections:
+						m.focusedPane = PaneRequest
+					case PaneRequest:
+						m.focusedPane = PaneResponse
+					case PaneResponse:
+						m.focusedPane = PaneCollections
+					}
+				} else {
+					if m.focusedPane == PaneRequest {
+						m.focusedPane = PaneResponse
+					} else {
+						m.focusedPane = PaneRequest
+					}
+				}
+				return m, nil
+			case "shift+tab":
+				if m.sidebarVisible {
+					switch m.focusedPane {
+					case PaneCollections:
+						m.focusedPane = PaneResponse
+					case PaneRequest:
+						m.focusedPane = PaneCollections
+					case PaneResponse:
+						m.focusedPane = PaneRequest
+					}
+				} else {
+					if m.focusedPane == PaneRequest {
+						m.focusedPane = PaneResponse
+					} else {
+						m.focusedPane = PaneRequest
+					}
+				}
+				return m, nil
+			}
+			// In Normal mode, route j/k/arrows etc. to focused pane for navigation
+		}
+
+		// --- Insert Mode ---
+		if m.mode == ModeInsert {
+			if msg.String() == "esc" {
+				m.mode = ModeNormal
+				return m, nil
+			}
+			// Route all other keys to focused sub-model for text editing
+		}
+	
+	case ToggleSidebarMsg:
+		m.sidebarVisible = !m.sidebarVisible
+		if m.sidebarVisible {
+			m.focusedPane = PaneCollections
+		} else {
+			m.focusedPane = PaneRequest
+		}
+		// Recalculate layout immediately
+		return m.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+
+	case FocusRequestMsg:
+		m.focusedPane = PaneRequest
+		return m, nil
+
+	case FocusMsg:
+		m.state = msg.Target
+		if msg.Target == ViewEnvEditor {
+			if env, ok := msg.Data.(storage.Environment); ok {
+				m.envEditor.SetEnvironment(env)
+			}
+		}
+		return m, nil
+
+	case BackMsg:
+		if m.currentCollection == nil {
+			// No collection selected, go back to welcome
+			m.state = ViewWelcome
+		} else {
+			m.state = ViewCollectionList
+		}
+		m.focusedPane = PaneCollections
+		return m, nil
+
+	case ExecuteRequestMsg:
+		m.focusedPane = PaneResponse
+		m.response.SetLoading(true)
+		finalReq := m.applyCurrentEnv(msg.Request)
+		// If TargetedURL is present, we temporarily override the URL in the request
+		// or pass it explicitly.
+		if msg.TargetedURL != "" {
+			finalReq.URL = msg.TargetedURL
+		}
+		return m, executeRequestCmd(m.httpClient, finalReq, msg.BaseURL)
+
+	case ResponseReadyMsg:
+		m.response.SetResponse(msg.Response, msg.Request)
+		m.response.SetLoading(false)
+		return m, nil
+
+	case CollectionSelectedMsg:
+		m.state = ViewCollectionList
+		m.currentCollection = &msg.Collection
+		m.collections.SetCollection(msg.Collection)
+		m.focusedPane = PaneRequest
+		return m.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+
+	case CollectionsLoadedMsg:
+		m.welcome.SetCollections(msg.Collections)
+		// Also forward to collectionSelector
+		newSelector, selCmd := m.collectionSelector.Update(msg)
+		m.collectionSelector = newSelector
+		return m, selCmd
+
+	case RequestSelectedMsg:
+		m.request.LoadRequest(msg.Request, msg.BaseURL)
+		m.focusedPane = PaneRequest
+		return m, nil
+
+	case CreateEnvMsg:
+		newEnv := storage.Environment{Name: msg.Name, Variables: make(map[string]string)}
+		m.state = ViewEnvEditor
+		m.envEditor.SetEnvironment(newEnv)
+		return m, nil
+
+	case DeleteEnvMsg:
+		return m, deleteEnvCmd(msg.Name)
+
+	case PromptForInputMsg:
+		m.state = ViewInput
+		m.input.title = msg.Title
+		m.input.textInput.Placeholder = msg.Placeholder
+		m.input.textInput.SetValue("")
+		m.input.onCommitMsg = msg.OnCommit
+		m.input.onCancelMsg = func() tea.Msg { return BackMsg{} }
+		return m, m.input.Init()
+
+	case CreateRequestMsg:
+		targetCol := "My Collection"
+		if m.currentCollection != nil {
+			targetCol = m.currentCollection.Name
+		}
+		// Create a basic GET request by default
+		newReq := storage.Request{
+			Name:    msg.Name,
+			Method:  "GET",
+			URL:     "https://httpbin.org/get",
+			Headers: make(map[string]string),
+		}
+		return m, createRequestCmd(targetCol, newReq)
+
+	case DeleteRequestMsg:
+		return m, deleteRequestCmd(msg.CollectionName, msg.RequestName)
+
+	case DeleteCollectionMsg:
+		return m, deleteCollectionCmd(msg.Name)
+
+	case CreateCollectionMsg:
+		col := storage.Collection{Name: msg.Name, Requests: []storage.Request{}}
+		if err := storage.SaveCollection(col); err != nil {
+			m.statusText = "Error: " + err.Error()
+			m.statusIsErr = true
+			return m, nil
+		}
+		// Select the newly created collection and go to workspace
+		return m, func() tea.Msg {
+			return CollectionSelectedMsg{Collection: col}
+		}
+
+	case RenameCollectionMsg:
+		return m, renameCollectionCmd(msg.OldName, msg.NewName)
+
+	case EnvChangedMsg:
+		m.currentEnv = &msg.NewEnv
+		m.request.SetVariables(msg.NewEnv.Variables)
+		return m, showStatusCmd(fmt.Sprintf("Env: %s", msg.NewEnv.Name), false)
+
+	case StatusMsg:
+		m.statusText = msg.Message
+		m.statusIsErr = msg.IsError
+		return m, nil
+
+	case RequestSaveResponseMsg:
+		m.state = ViewInput
+		m.input = NewInputModel(
+			"Save Response Body",
+			"filename.json",
+			func(val string) tea.Msg {
+				return SaveResponseBodyMsg{Filename: val, Body: msg.Body}
+			},
+			func() tea.Msg { return BackMsg{} },
+		)
+		m.input.SetSize(m.width, m.height)
+		return m, m.input.Init()
+
+	case SaveResponseBodyMsg:
+		m.state = ViewCollectionList // Or back to wherever we caused it? ViewResponse/Dashboard
+		// Actually if we were in ViewResponse (Dashboard), we stay in Dashboard but focus might be lost if state is ViewCollectionList.
+		// Wait, state ViewCollectionList is seemingly "Default Dashboard View". 
+		// Ideally we return to ViewResponse focus.
+		// Let's assume ViewCollectionList is the main "Dashboard" state (which is confusing naming, but let's stick to existing pattern).
+		// Re-reading code: m.state = ViewCollectionList seems to be the default state for "The Dashboard".
+		
+		err := os.WriteFile(msg.Filename, msg.Body, 0644)
+		if err != nil {
+			m.statusText = "Error saving file: " + err.Error()
+			m.statusIsErr = true
+		} else {
+			m.statusText = "Saved to " + msg.Filename
+			m.statusIsErr = false
+		}
+		// Refocus response pane?
+		m.focusedPane = PaneResponse
+		return m, nil
+	}
+
+	// Route updates based on focus and state
+	if m.menu.visible {
+		newMenu, menuCmd := m.menu.Update(msg)
+		m.menu = newMenu
+		cmds = append(cmds, menuCmd)
+	} else if m.env.visible {
+		newEnv, envCmd := m.env.Update(msg)
+		m.env = newEnv
+		cmds = append(cmds, envCmd)
+	} else if m.state == ViewEnvEditor {
+		newEditor, editCmd := m.envEditor.Update(msg)
+		m.envEditor = newEditor
+		cmds = append(cmds, editCmd)
+	} else if m.collectionSelector.visible {
+		newSelector, selCmd := m.collectionSelector.Update(msg)
+		m.collectionSelector = newSelector
+		cmds = append(cmds, selCmd)
+	} else if m.state == ViewInput {
+		newInput, inputCmd := m.input.Update(msg)
+		m.input = newInput
+		cmds = append(cmds, inputCmd)
+	} else {
+		// Dashboard updates
+		switch m.focusedPane {
+		case PaneCollections:
+			newCollections, colCmd := m.collections.Update(msg)
+			m.collections = newCollections
+			cmds = append(cmds, colCmd)
+		case PaneRequest:
+			newRequest, reqCmd := m.request.Update(msg)
+			m.request = newRequest
+			cmds = append(cmds, reqCmd)
+		case PaneResponse:
+			newResponse, respCmd := m.response.Update(msg)
+			m.response = newResponse
+			cmds = append(cmds, respCmd)
+		}
+	}
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m Model) View() string {
+	if m.width == 0 || m.height == 0 {
+		return "Initializing..."
+	}
+    
+    // Check if terminal is too small
+    if m.tooSmall {
+        return lipgloss.Place(m.width, m.height,
+            lipgloss.Center, lipgloss.Center,
+            fmt.Sprintf("Terminal is too small.\nPlease resize to at least %dx%d.", minWidth, minHeight),
+        )
+    }
+
+	// Welcome screen
+	if m.state == ViewWelcome {
+		return m.welcome.View()
+	}
+
+	// 1. Header
+	headerText := " TAPI "
+	if m.currentCollection != nil {
+		headerText += " • " + m.currentCollection.Name
+	}
+	header := TitleStyle.Render(headerText)
+	if m.currentEnv != nil {
+		header += " " + StatusStyle.Render("Env: "+m.currentEnv.Name)
+	}
+	header += "\n"
+
+	// 2. Dashboard Content
+	var sidebar, request, response string
+	
+	sStyle, rStyle, respStyle := InactivePaneStyle, InactivePaneStyle, InactivePaneStyle
+	switch m.focusedPane {
+	case PaneCollections:
+		sStyle = ActivePaneStyle
+	case PaneRequest:
+		rStyle = ActivePaneStyle
+	case PaneResponse:
+		respStyle = ActivePaneStyle
+	}
+
+	if m.sidebarVisible {
+		sidebar = sStyle.Width(m.collections.width).Height(m.collections.height).Render(m.collections.View())
+	}
+	request = rStyle.Width(m.request.width).Height(m.request.height).Render(m.request.View())
+	response = respStyle.Width(m.response.width).Height(m.response.height).Render(m.response.View())
+
+	var dashboard string
+	if m.sidebarVisible {
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, request, response)
+	} else {
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, request, response)
+	}
+	
+	// Apply Main Layout padding
+	dashboard = MainLayoutStyle.Render(dashboard)
+
+	// 3. Status Bar
+	logo := StatusBarLogoStyle.Render(" TAPI ")
+
+	// Mode indicator
+	var modeIndicator string
+	if m.leaderActive {
+		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#e0af68")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("LEADER")
+	} else if m.mode == ModeInsert {
+		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#9ece6a")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("INSERT")
+	} else {
+		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#7aa2f7")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("NORMAL")
+	}
+
+	ctx := " No Env "
+	if m.currentEnv != nil {
+		ctx = " " + m.currentEnv.Name + " "
+	}
+	contextBlock := StatusBarContextStyle.Render(ctx)
+	
+	helpView := m.help.View(m.keys)
+	helpBlock := StatusBarInfoStyle.Render(helpView)
+	
+	wSoFar := lipgloss.Width(logo) + lipgloss.Width(contextBlock) + lipgloss.Width(helpBlock)
+	statusWidth := max(0, m.width - wSoFar - 4) // Adjust for padding
+	
+	statusText := m.statusText
+	if statusText == "" {
+		statusText = "Ready"
+	}
+	
+	statusStyle := StatusBarInfoStyle.Width(statusWidth)
+	if m.statusIsErr {
+		statusStyle = statusStyle.Background(ErrorColor).Foreground(White)
+	}
+	statusBlock := statusStyle.Render(statusText)
+	
+	bar := lipgloss.JoinHorizontal(lipgloss.Top,
+		logo,
+		modeIndicator,
+		contextBlock,
+		statusBlock,
+		helpBlock,
+	)
+
+	// Final Assembly
+	fullView := lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		dashboard,
+		bar,
+	)
+
+	// Modals (Overlays)
+	var overlay string
+	if m.menu.visible {
+		overlay = m.menu.View()
+	} else if m.env.visible {
+		overlay = m.env.View()
+	} else if m.state == ViewEnvEditor {
+		overlay = m.envEditor.View()
+	} else if m.collectionSelector.visible {
+		overlay = m.collectionSelector.View()
+	}
+
+	if overlay != "" {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay,
+			lipgloss.WithWhitespaceBackground(lipgloss.Color("#111111")),
+		)
+	}
+
+	// Input prompt floats on top of the current view (transparent overlay)
+	if m.state == ViewInput {
+		inputOverlay := m.input.View()
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, inputOverlay,
+			lipgloss.WithWhitespaceForeground(lipgloss.Color("#333333")),
+			lipgloss.WithWhitespaceChars("░"),
+		)
+	}
+
+	return fullView
+}
+
+// applyCurrentEnv applies the current environment variables to a request
+func (m *Model) applyCurrentEnv(req storage.Request) storage.Request {
+	if m.currentEnv == nil {
+		return req
+	}
+
+	req.URL = storage.Substitute(req.URL, m.currentEnv.Variables)
+	req.Body = storage.Substitute(req.Body, m.currentEnv.Variables)
+	for k, v := range req.Headers {
+		req.Headers[k] = storage.Substitute(v, m.currentEnv.Variables)
+	}
+	return req
+}
+
+// ========================================
+// Command Functions
+// ========================================
+
+func loadCollectionsCmd() tea.Cmd {
+	return func() tea.Msg {
+		collections, err := storage.LoadCollections()
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return CollectionsLoadedMsg{Collections: collections}
+	}
+}
+
+func executeRequestCmd(httpClient *http.Client, req storage.Request, baseURL string) tea.Cmd {
+	return func() tea.Msg {
+		response, err := httpClient.Execute(req, baseURL)
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return ResponseReadyMsg{Response: response, Request: req}
+	}
+}
+
+func saveRequestCmd(req storage.Request) tea.Cmd {
+	return func() tea.Msg {
+		collections, _ := storage.LoadCollections()
+		for i, col := range collections {
+			for j, r := range col.Requests {
+				if r.Name == req.Name {
+					collections[i].Requests[j] = req
+					if err := storage.SaveCollection(collections[i]); err != nil {
+						return ErrMsg{Err: err}
+					}
+					return StatusMsg{Message: "Request saved", IsError: false}
+				}
+			}
+		}
+		return ErrMsg{Err: fmt.Errorf("collection not found for request %s", req.Name)}
+	}
+}
+
+func saveCollectionCmd(col storage.Collection) tea.Cmd {
+	return func() tea.Msg {
+		if err := storage.SaveCollection(col); err != nil {
+			return ErrMsg{Err: err}
+		}
+		return StatusMsg{Message: "Collection saved", IsError: false}
+	}
+}
+
+func showStatusCmd(message string, isError bool) tea.Cmd {
+	return func() tea.Msg {
+		return StatusMsg{Message: message, IsError: isError}
+	}
+}
+
+func loadEnvsCmd() tea.Cmd {
+	return func() tea.Msg {
+		envs, err := storage.LoadEnvironments()
+		if err != nil {
+			return ErrMsg{Err: err}
+		}
+		return EnvsLoadedMsg{Envs: envs}
+	}
+}
+
+func saveEnvCmd(env storage.Environment) tea.Cmd {
+	return func() tea.Msg {
+		if err := storage.SaveEnvironment(env); err != nil {
+			return ErrMsg{Err: err}
+		}
+		return tea.Batch(
+			showStatusCmd("Environment saved", false),
+			func() tea.Msg { return BackMsg{} },
+			func() tea.Msg {
+				envs, _ := storage.LoadEnvironments()
+				return EnvsLoadedMsg{Envs: envs}
+			},
+		)
+	}
+}
+
+func deleteEnvCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := storage.DeleteEnvironment(name); err != nil {
+			return ErrMsg{Err: err}
+		}
+		return tea.Batch(
+			showStatusCmd("Environment deleted", false),
+			func() tea.Msg {
+				envs, _ := storage.LoadEnvironments()
+				return EnvsLoadedMsg{Envs: envs}
+			},
+		)
+	}
+}
+
+func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
+	return func() tea.Msg {
+		collections, _ := storage.LoadCollections()
+		
+		// Find or create collection
+		var targetCol *storage.Collection
+		var targetIdx int
+		found := false
+
+		for i := range collections {
+			if collections[i].Name == collectionName {
+				targetCol = &collections[i]
+				targetIdx = i
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			// Create new collection
+			newCol := storage.Collection{Name: collectionName, Requests: []storage.Request{req}}
+			if err := storage.SaveCollection(newCol); err != nil {
+				return ErrMsg{Err: err}
+			}
+		} else {
+			// Add to existing
+			targetCol.Requests = append(targetCol.Requests, req)
+			// Update in list
+			collections[targetIdx] = *targetCol
+			if err := storage.SaveCollection(*targetCol); err != nil {
+				return ErrMsg{Err: err}
+			}
+		}
+
+		return tea.Batch(
+			showStatusCmd("Request created", false),
+			loadCollectionsCmd(),
+		)
+	}
+}
+
+func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
+	return func() tea.Msg {
+		collections, _ := storage.LoadCollections()
+		for i, col := range collections {
+			if col.Name == collectionName {
+				// Filter out the request
+				newRequests := []storage.Request{}
+				for _, r := range col.Requests {
+					if r.Name != requestName {
+						newRequests = append(newRequests, r)
+					}
+				}
+				collections[i].Requests = newRequests
+				if err := storage.SaveCollection(collections[i]); err != nil {
+					return ErrMsg{Err: err}
+				}
+				return tea.Batch(
+					showStatusCmd("Request deleted", false),
+					loadCollectionsCmd(),
+				)
+			}
+		}
+		return nil
+	}
+}
+
+func deleteCollectionCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		if err := storage.DeleteCollection(name); err != nil {
+			return ErrMsg{Err: err}
+		}
+		return tea.Batch(
+			showStatusCmd("Collection deleted", false),
+			loadCollectionsCmd(),
+		)
+	}
+}
+
+func renameCollectionCmd(oldName, newName string) tea.Cmd {
+	return func() tea.Msg {
+		collections, _ := storage.LoadCollections()
+		for _, col := range collections {
+			if col.Name == oldName {
+				// 1. Delete old
+				if err := storage.DeleteCollection(oldName); err != nil {
+					return ErrMsg{Err: err}
+				}
+				// 2. Save as new
+				col.Name = newName
+				if err := storage.SaveCollection(col); err != nil {
+					return ErrMsg{Err: err}
+				}
+				return tea.Batch(
+					showStatusCmd("Collection renamed", false),
+					loadCollectionsCmd(),
+				)
+			}
+		}
+		return ErrMsg{Err: fmt.Errorf("collection not found")}
+	}
+}

@@ -1,0 +1,16 @@
+# .air.toml - minimal live reload setup
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Command to rebuild on changes
+  cmd = "go install ./cmd/tapi"
+  # Watch these file extensions
+  include_ext = ["go"]
+  # Exclude temporary and vendor directories
+  exclude_dir = ["tmp", "vendor", ".git"]
+
+[color]
+  main = "yellow"
+  watcher = "cyan"
+

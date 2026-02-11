@@ -1,0 +1,22 @@
+version: "3"
+
+tasks:
+  dev:
+    desc: "Run the app in dev mode with live reload (Air)"
+    cmds:
+      - air
+    env:
+      PATH: "{{.GOPATH}}/bin:{{.PATH}}"
+
+  install:
+    desc: "Install the app globally"
+    cmds:
+      - go install ./cmd/tapi
+    env:
+      PATH: "{{.GOPATH}}/bin:{{.PATH}}"
+
+  clean:
+    desc: "Remove temporary build files"
+    cmds:
+      - rm -rf tmp
+      - rm -f $(go env GOPATH)/bin/tapi
