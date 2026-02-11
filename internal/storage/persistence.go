@@ -164,3 +164,24 @@ func DeleteCollection(name string) error {
 	logger.Logger.Info("Deleted collection", "name", name, "file", finalPath)
 	return nil
 }
+
+// ExportCollection copies a collection YAML file to the given destination path.
+func ExportCollection(name, destPath string) error {
+	collectionsPath, err := GetStoragePath("collections")
+	if err != nil {
+		return err
+	}
+
+	srcFile := filepath.Join(collectionsPath, slug.Make(name)+".yaml")
+	data, err := os.ReadFile(srcFile)
+	if err != nil {
+		return fmt.Errorf("collection %q not found: %w", name, err)
+	}
+
+	if err := os.WriteFile(destPath, data, 0o644); err != nil {
+		return fmt.Errorf("failed to write export: %w", err)
+	}
+
+	logger.Logger.Info("Exported collection", "name", name, "dest", destPath)
+	return nil
+}

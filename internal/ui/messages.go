@@ -210,3 +210,36 @@ type RequestSaveResponseMsg struct {
 type SuggestionSelectedMsg struct {
 	VarName string
 }
+
+// ========================================
+// Import/Export Messages
+// ========================================
+
+// ImportCollectionMsg triggers importing a collection from a file
+type ImportCollectionMsg struct {
+	Path string
+}
+
+// ExportCollectionMsg triggers exporting the current collection to a file
+type ExportCollectionMsg struct {
+	DestPath string
+}
+
+// ========================================
+// Quick Win Messages
+// ========================================
+
+// ConfirmActionMsg shows a yes/no confirmation before executing a destructive action
+type ConfirmActionMsg struct {
+	Title     string
+	OnConfirm tea.Msg
+}
+
+// DuplicateRequestMsg duplicates a request in a collection
+type DuplicateRequestMsg struct {
+	CollectionName string
+	RequestName    string
+}
+
+// ClearStatusMsg clears the status bar text (used for auto-dismiss)
+type ClearStatusMsg struct{}

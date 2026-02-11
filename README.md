@@ -15,6 +15,7 @@
 
 - **Welcome Screen** — LazyVim-style dashboard with recent collections and quick actions
 - **Collection Management** — Organize requests into collections stored as YAML in `~/.tapi/collections/`
+- **Import/Export** — Import collections from Postman (v2.1), Insomnia (v4), or cURL commands. Export as YAML
 - **Request Builder** — Full control over HTTP methods, URL, Headers, Params, Body, and Query Params
 - **Response Viewer** — Syntax-highlighted JSON, collapsible headers, copy/save body
 - **Environment Variables** — Manage environments in `~/.tapi/environments/`, use `{{var}}` syntax with autocomplete and validation
@@ -92,8 +93,9 @@ TAPI uses Vim-style **Normal** and **Insert** modes. The current mode is shown i
 | Key | Action |
 |-----|--------|
 | `Enter` | Select request / Create new |
-| `d` | Delete request |
-| `D` | Delete collection |
+| `d` | Delete request (with confirmation) |
+| `D` | Delete collection (with confirmation) |
+| `y` | Duplicate request |
 | `r` | Rename collection |
 
 ### Response Pane
@@ -117,6 +119,16 @@ TAPI uses Vim-style **Normal** and **Insert** modes. The current mode is shown i
 ├── collections/     # YAML files, one per collection
 └── environments/    # YAML files, one per environment
 ```
+
+## Import / Export
+
+TAPI can import collections from other tools via the command menu (`Space k` → "Import Collection"):
+
+- **Postman** — v2.1 JSON exports (folders are flattened)
+- **Insomnia** — v4 JSON exports
+- **cURL** — Paste a cURL command into a `.txt` file
+
+To export, select "Export Collection" from the command menu — it saves the current collection as a portable YAML file.
 
 ## Tech Stack
 

@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,6 +11,7 @@ import (
 	"github.com/styltsou/tapi/internal/http"
 	"github.com/styltsou/tapi/internal/logger"
 	"github.com/styltsou/tapi/internal/storage"
+	"github.com/styltsou/tapi/internal/storage/importer"
 )
 
 // Pane represents the focusable areas of the dashboard
@@ -405,7 +407,74 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StatusMsg:
 		m.statusText = msg.Message
 		m.statusIsErr = msg.IsError
+		// Auto-dismiss status after 3 seconds
+		return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+			return ClearStatusMsg{}
+		})
+
+	case ClearStatusMsg:
+		m.statusText = ""
+		m.statusIsErr = false
 		return m, nil
+
+	case ImportCollectionMsg:
+		collections, err := importer.ImportFromFile(msg.Path)
+		if err != nil {
+			m.statusText = "Import failed: " + err.Error()
+			m.statusIsErr = true
+			return m, nil
+		}
+		for _, col := range collections {
+			if saveErr := storage.SaveCollection(col); saveErr != nil {
+				m.statusText = "Import save failed: " + saveErr.Error()
+				m.statusIsErr = true
+				return m, nil
+			}
+		}
+		// Reload and select the first imported collection
+		if len(collections) > 0 {
+			return m, tea.Batch(
+				showStatusCmd(fmt.Sprintf("Imported %d collection(s)", len(collections)), false),
+				loadCollectionsCmd(),
+				func() tea.Msg {
+					return CollectionSelectedMsg{Collection: collections[0]}
+				},
+			)
+		}
+		return m, showStatusCmd("Import successful", false)
+
+	case ExportCollectionMsg:
+		if m.currentCollection == nil {
+			m.statusText = "No collection selected to export"
+			m.statusIsErr = true
+			return m, nil
+		}
+		if err := storage.ExportCollection(m.currentCollection.Name, msg.DestPath); err != nil {
+			m.statusText = "Export failed: " + err.Error()
+			m.statusIsErr = true
+			return m, nil
+		}
+		return m, showStatusCmd("Exported to "+msg.DestPath, false)
+
+	case ConfirmActionMsg:
+		m.state = ViewInput
+		confirmAction := msg.OnConfirm
+		m.input = NewInputModel(
+			msg.Title,
+			"Type 'yes' to confirm",
+			func(val string) tea.Msg {
+				if val == "yes" {
+					return confirmAction
+				}
+				return BackMsg{}
+			},
+			func() tea.Msg { return BackMsg{} },
+		)
+		m.input.SetSize(m.width, m.height)
+		return m, m.input.Init()
+
+	case DuplicateRequestMsg:
+		return m, duplicateRequestCmd(msg.CollectionName, msg.RequestName)
 
 	case RequestSaveResponseMsg:
 		m.state = ViewInput
@@ -834,5 +903,39 @@ func renameCollectionCmd(oldName, newName string) tea.Cmd {
 			}
 		}
 		return ErrMsg{Err: fmt.Errorf("collection not found")}
+	}
+}
+
+func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
+	return func() tea.Msg {
+		collections, _ := storage.LoadCollections()
+		for i, col := range collections {
+			if col.Name == collectionName {
+				for _, r := range col.Requests {
+					if r.Name == requestName {
+						// Clone the request with a " (copy)" suffix
+						dup := storage.Request{
+							Name:    r.Name + " (copy)",
+							Method:  r.Method,
+							URL:     r.URL,
+							Body:    r.Body,
+							Headers: make(map[string]string),
+						}
+						for k, v := range r.Headers {
+							dup.Headers[k] = v
+						}
+						collections[i].Requests = append(collections[i].Requests, dup)
+						if err := storage.SaveCollection(collections[i]); err != nil {
+							return ErrMsg{Err: err}
+						}
+						return tea.Batch(
+							showStatusCmd("Request duplicated", false),
+							loadCollectionsCmd(),
+						)
+					}
+				}
+			}
+		}
+		return ErrMsg{Err: fmt.Errorf("request not found")}
 	}
 }

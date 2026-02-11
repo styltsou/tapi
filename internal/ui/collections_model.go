@@ -90,20 +90,36 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 				}
 			}
 		
-		case "d": // Delete Request
+		case "d": // Delete Request (with confirmation)
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
-					return DeleteRequestMsg{
-						CollectionName: selected.collection.Name,
-						RequestName:    selected.request.Name,
+					return ConfirmActionMsg{
+						Title: "Delete request: " + selected.request.Name + "?",
+						OnConfirm: DeleteRequestMsg{
+							CollectionName: selected.collection.Name,
+							RequestName:    selected.request.Name,
+						},
 					}
 				}
 			}
 
-		case "D": // Delete Collection (Shift+d)
+		case "D": // Delete Collection (with confirmation)
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
-					return DeleteCollectionMsg{Name: selected.collection.Name}
+					return ConfirmActionMsg{
+						Title:     "Delete collection: " + selected.collection.Name + "?",
+						OnConfirm: DeleteCollectionMsg{Name: selected.collection.Name},
+					}
+				}
+			}
+
+		case "y": // Duplicate Request
+			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
+				return m, func() tea.Msg {
+					return DuplicateRequestMsg{
+						CollectionName: selected.collection.Name,
+						RequestName:    selected.request.Name,
+					}
 				}
 			}
 

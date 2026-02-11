@@ -29,6 +29,16 @@ func NewCommandMenuModel() CommandMenuModel {
 	items := []list.Item{
 		commandItem{title: "Toggle Sidebar", desc: "Show/Hide the collection sidebar", action: ToggleSidebarMsg{}},
 		commandItem{title: "Change Collection", desc: "Switch to a different collection", action: OpenCollectionSelectorMsg{}},
+		commandItem{title: "Import Collection", desc: "Import from Postman, Insomnia, or cURL", action: PromptForInputMsg{
+			Title:       "Import Collection",
+			Placeholder: "Path to file (Postman JSON, Insomnia JSON, or cURL)",
+			OnCommit:    func(val string) tea.Msg { return ImportCollectionMsg{Path: val} },
+		}},
+		commandItem{title: "Export Collection", desc: "Export current collection as YAML", action: PromptForInputMsg{
+			Title:       "Export Collection",
+			Placeholder: "Destination path (e.g. ~/my-collection.yaml)",
+			OnCommit:    func(val string) tea.Msg { return ExportCollectionMsg{DestPath: val} },
+		}},
 		commandItem{title: "Environments", desc: "Manage environment variables", action: FocusMsg{Target: ViewEnvironments}},
 		commandItem{title: "Quit", desc: "Exit the application", action: tea.Quit()},
 	}
