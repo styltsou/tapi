@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -150,6 +152,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		logger.Logger.Debug("Window resized", "width", msg.Width, "height", msg.Height)
 		return m, nil
+
+	case ErrMsg:
+		logger.Logger.Error("Application error", "error", msg.Err)
+		return m, showStatusCmd("Error: "+msg.Err.Error(), true)
 
 	case tea.KeyMsg:
 		// Always allow Ctrl+C to quit
@@ -353,6 +359,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case DeleteEnvMsg:
+		return m, func() tea.Msg {
+			return ConfirmActionMsg{
+				Title:     "Delete environment: " + msg.Name + "?",
+				OnConfirm: confirmedDeleteEnvMsg{Name: msg.Name},
+			}
+		}
+
+	case confirmedDeleteEnvMsg:
 		return m, deleteEnvCmd(msg.Name)
 
 	case PromptForInputMsg:
@@ -418,17 +432,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ImportCollectionMsg:
-		collections, err := importer.ImportFromFile(msg.Path)
+		importPath := expandTilde(msg.Path)
+		collections, err := importer.ImportFromFile(importPath)
 		if err != nil {
-			m.statusText = "Import failed: " + err.Error()
-			m.statusIsErr = true
-			return m, nil
+			return m, showStatusCmd("Import failed: "+err.Error(), true)
 		}
 		for _, col := range collections {
 			if saveErr := storage.SaveCollection(col); saveErr != nil {
-				m.statusText = "Import save failed: " + saveErr.Error()
-				m.statusIsErr = true
-				return m, nil
+				return m, showStatusCmd("Import save failed: "+saveErr.Error(), true)
 			}
 		}
 		// Reload and select the first imported collection
@@ -445,16 +456,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ExportCollectionMsg:
 		if m.currentCollection == nil {
-			m.statusText = "No collection selected to export"
-			m.statusIsErr = true
-			return m, nil
+			return m, showStatusCmd("No collection selected to export", true)
 		}
-		if err := storage.ExportCollection(m.currentCollection.Name, msg.DestPath); err != nil {
-			m.statusText = "Export failed: " + err.Error()
-			m.statusIsErr = true
-			return m, nil
+		exportPath := expandTilde(msg.DestPath)
+		if err := storage.ExportCollection(m.currentCollection.Name, exportPath); err != nil {
+			return m, showStatusCmd("Export failed: "+err.Error(), true)
 		}
-		return m, showStatusCmd("Exported to "+msg.DestPath, false)
+		return m, showStatusCmd("Exported to "+exportPath, false)
 
 	case ConfirmActionMsg:
 		m.state = ViewInput
@@ -490,24 +498,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.input.Init()
 
 	case SaveResponseBodyMsg:
-		m.state = ViewCollectionList // Or back to wherever we caused it? ViewResponse/Dashboard
-		// Actually if we were in ViewResponse (Dashboard), we stay in Dashboard but focus might be lost if state is ViewCollectionList.
-		// Wait, state ViewCollectionList is seemingly "Default Dashboard View". 
-		// Ideally we return to ViewResponse focus.
-		// Let's assume ViewCollectionList is the main "Dashboard" state (which is confusing naming, but let's stick to existing pattern).
-		// Re-reading code: m.state = ViewCollectionList seems to be the default state for "The Dashboard".
-		
-		err := os.WriteFile(msg.Filename, msg.Body, 0644)
-		if err != nil {
-			m.statusText = "Error saving file: " + err.Error()
-			m.statusIsErr = true
-		} else {
-			m.statusText = "Saved to " + msg.Filename
-			m.statusIsErr = false
-		}
-		// Refocus response pane?
+		m.state = ViewCollectionList
 		m.focusedPane = PaneResponse
-		return m, nil
+		savePath := expandTilde(msg.Filename)
+		err := os.WriteFile(savePath, msg.Body, 0644)
+		if err != nil {
+			return m, showStatusCmd("Error saving file: "+err.Error(), true)
+		}
+		return m, showStatusCmd("Saved to "+savePath, false)
 	}
 
 	// Route updates based on focus and state
@@ -705,6 +703,23 @@ func (m *Model) applyCurrentEnv(req storage.Request) storage.Request {
 	return req
 }
 
+// confirmedDeleteEnvMsg is the internal message sent after user confirms env deletion
+type confirmedDeleteEnvMsg struct {
+	Name string
+}
+
+// expandTilde replaces a leading ~ with the user's home directory
+func expandTilde(path string) string {
+	if strings.HasPrefix(path, "~/") || path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return filepath.Join(home, path[1:])
+	}
+	return path
+}
+
 // ========================================
 // Command Functions
 // ========================================
@@ -866,7 +881,7 @@ func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
 				)
 			}
 		}
-		return nil
+		return ErrMsg{Err: fmt.Errorf("request %q not found in collection %q", requestName, collectionName)}
 	}
 }
 
