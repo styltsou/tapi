@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/styltsou/tapi/internal/config"
 	"github.com/styltsou/tapi/internal/logger"
 )
 
@@ -13,7 +14,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestNewModel(t *testing.T) {
-	m := NewModel()
+	m := NewModel(config.DefaultConfig())
 
 	if m.state != ViewWelcome {
 		t.Errorf("Expected initial state ViewWelcome, got %v", m.state)
@@ -25,7 +26,7 @@ func TestNewModel(t *testing.T) {
 }
 
 func TestModel_Update_Navigation(t *testing.T) {
-	m := NewModel()
+	m := NewModel(config.DefaultConfig())
 
 	// Test FocusMsg
 	m2, _ := m.Update(FocusMsg{Target: ViewRequestBuilder})
@@ -43,14 +44,8 @@ func TestModel_Update_Navigation(t *testing.T) {
 }
 
 func TestModel_Update_EnvToggle(t *testing.T) {
-	// Note: We'd need to mock KeyMsg for better testing, but we can test the handler directly if exposed
-	// or test via EnvChangedMsg which is simpler.
-	
-	m := NewModel()
+	m := NewModel(config.DefaultConfig())
 	if m.env.visible {
 		t.Fatal("Env should be hidden")
 	}
-	
-	// Since keys are private, we can't easily trigger KeyMsg without mimicking the bubbletea flow
-	// but we can verify the state after Msg handlers.
 }

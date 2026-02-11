@@ -40,6 +40,7 @@ func NewCommandMenuModel() CommandMenuModel {
 			OnCommit:    func(val string) tea.Msg { return ExportCollectionMsg{DestPath: val} },
 		}},
 		commandItem{title: "Environments", desc: "Manage environment variables", action: FocusMsg{Target: ViewEnvironments}},
+		commandItem{title: "Copy as cURL", desc: "Copy current request as a cURL command", action: CopyAsCurlMsg{}},
 		commandItem{title: "Quit", desc: "Exit the application", action: tea.Quit()},
 	}
 
