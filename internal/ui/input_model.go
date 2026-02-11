@@ -20,7 +20,7 @@ func NewInputModel(title string, placeholder string, onCommit func(string) tea.M
 	ti := textinput.New()
 	ti.Placeholder = placeholder
 	ti.Focus()
-	ti.CharLimit = 50
+	ti.CharLimit = 256
 	ti.Width = 40
 
 	return InputModel{
