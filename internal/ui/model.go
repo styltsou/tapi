@@ -630,13 +630,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SaveResponseBodyMsg:
 		m.state = ViewCollectionList
 		m.focusedPane = PaneResponse
-		savePath := expandTilde(msg.Filename)
-		err := os.WriteFile(savePath, msg.Body, 0644)
-
-		if err != nil {
-			return m, showStatusCmd("Error saving file: "+err.Error(), true)
-		}
-		return m, showStatusCmd("Saved to "+savePath, false)
+		return m, saveResponseBodyCmd(expandTilde(msg.Filename), msg.Body)
 	}
 
 	// Route updates based on focus and state
@@ -709,48 +703,7 @@ func (m Model) View() string {
 	dashboard := m.viewDashboard()
 
 	// 3. Status Bar
-	logo := StatusBarLogoStyle.Render(" TAPI ")
-
-	// Mode indicator
-	var modeIndicator string
-	if m.leaderActive {
-		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#e0af68")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("LEADER")
-	} else if m.mode == ModeInsert {
-		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#9ece6a")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("INSERT")
-	} else {
-		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#7aa2f7")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("NORMAL")
-	}
-
-	ctx := " No Env "
-	if m.currentEnv != nil {
-		ctx = " " + m.currentEnv.Name + " "
-	}
-	contextBlock := StatusBarContextStyle.Render(ctx)
-	
-	helpView := m.help.View(m.keys)
-	helpBlock := StatusBarInfoStyle.Render(helpView)
-	
-	wSoFar := lipgloss.Width(logo) + lipgloss.Width(contextBlock) + lipgloss.Width(helpBlock)
-	statusWidth := max(0, m.width - wSoFar - 4) // Adjust for padding
-	
-	statusText := m.statusText
-	if statusText == "" {
-		statusText = "Ready"
-	}
-	
-	statusStyle := StatusBarInfoStyle.Width(statusWidth)
-	if m.statusIsErr {
-		statusStyle = statusStyle.Background(ErrorColor).Foreground(White)
-	}
-	statusBlock := statusStyle.Render(statusText)
-	
-	bar := lipgloss.JoinHorizontal(lipgloss.Top,
-		logo,
-		modeIndicator,
-		contextBlock,
-		statusBlock,
-		helpBlock,
-	)
+	bar := m.viewStatusBar()
 
 	// Final Assembly
 	fullView := lipgloss.JoinVertical(lipgloss.Left,
@@ -824,170 +777,10 @@ func expandTilde(path string) string {
 }
 
 // ========================================
-// Command Functions
+// View Helper Functions
 // ========================================
 
-func loadCollectionsCmd() tea.Cmd {
-	return func() tea.Msg {
-		collections, err := storage.LoadCollections()
-		if err != nil {
-			return ErrMsg{Err: err}
-		}
-		return CollectionsLoadedMsg{Collections: collections}
-	}
-}
 
-func executeRequestCmd(httpClient *http.Client, req storage.Request, baseURL string) tea.Cmd {
-	return func() tea.Msg {
-		response, err := httpClient.Execute(req, baseURL)
-		if err != nil {
-			return ErrMsg{Err: err}
-		}
-		return ResponseReadyMsg{Response: response, Request: req}
-	}
-}
-
-func saveRequestCmd(req storage.Request) tea.Cmd {
-	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
-		for i, col := range collections {
-			for j, r := range col.Requests {
-				if r.Name == req.Name {
-					collections[i].Requests[j] = req
-					if err := storage.SaveCollection(collections[i]); err != nil {
-						return ErrMsg{Err: err}
-					}
-					return StatusMsg{Message: "Request saved", IsError: false}
-				}
-			}
-		}
-		return ErrMsg{Err: fmt.Errorf("collection not found for request %s", req.Name)}
-	}
-}
-
-func saveCollectionCmd(col storage.Collection) tea.Cmd {
-	return func() tea.Msg {
-		if err := storage.SaveCollection(col); err != nil {
-			return ErrMsg{Err: err}
-		}
-		return StatusMsg{Message: "Collection saved", IsError: false}
-	}
-}
-
-func showStatusCmd(message string, isError bool) tea.Cmd {
-	return func() tea.Msg {
-		return StatusMsg{Message: message, IsError: isError}
-	}
-}
-
-func loadEnvsCmd() tea.Cmd {
-	return func() tea.Msg {
-		envs, err := storage.LoadEnvironments()
-		if err != nil {
-			return ErrMsg{Err: err}
-		}
-		return EnvsLoadedMsg{Envs: envs}
-	}
-}
-
-func saveEnvCmd(env storage.Environment) tea.Cmd {
-	return func() tea.Msg {
-		if err := storage.SaveEnvironment(env); err != nil {
-			return ErrMsg{Err: err}
-		}
-		return tea.Batch(
-			showStatusCmd("Environment saved", false),
-			func() tea.Msg { return BackMsg{} },
-			func() tea.Msg {
-				envs, _ := storage.LoadEnvironments()
-				return EnvsLoadedMsg{Envs: envs}
-			},
-		)
-	}
-}
-
-func deleteEnvCmd(name string) tea.Cmd {
-	return func() tea.Msg {
-		if err := storage.DeleteEnvironment(name); err != nil {
-			return ErrMsg{Err: err}
-		}
-		return tea.Batch(
-			showStatusCmd("Environment deleted", false),
-			func() tea.Msg {
-				envs, _ := storage.LoadEnvironments()
-				return EnvsLoadedMsg{Envs: envs}
-			},
-		)
-	}
-}
-
-func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
-	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
-		
-		// Find or create collection
-		var targetCol *storage.Collection
-		var targetIdx int
-		found := false
-
-		for i := range collections {
-			if collections[i].Name == collectionName {
-				targetCol = &collections[i]
-				targetIdx = i
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			// Create new collection
-			newCol := storage.Collection{Name: collectionName, Requests: []storage.Request{req}}
-			if err := storage.SaveCollection(newCol); err != nil {
-				return ErrMsg{Err: err}
-			}
-		} else {
-			// Add to existing
-			targetCol.Requests = append(targetCol.Requests, req)
-			// Update in list
-			collections[targetIdx] = *targetCol
-			if err := storage.SaveCollection(*targetCol); err != nil {
-				return ErrMsg{Err: err}
-			}
-		}
-
-		return tea.Batch(
-			showStatusCmd("Request created", false),
-			loadCollectionsCmd(),
-		)
-	}
-}
-
-
-func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
-	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
-		for i, col := range collections {
-			if col.Name == collectionName {
-				// Filter out the request
-				newRequests := []storage.Request{}
-				for _, r := range col.Requests {
-					if r.Name != requestName {
-						newRequests = append(newRequests, r)
-					}
-				}
-				collections[i].Requests = newRequests
-				if err := storage.SaveCollection(collections[i]); err != nil {
-					return ErrMsg{Err: err}
-				}
-				return tea.Batch(
-					showStatusCmd("Request deleted", false),
-					loadCollectionsCmd(),
-				)
-			}
-		}
-		return ErrMsg{Err: fmt.Errorf("request %q not found in collection %q", requestName, collectionName)}
-	}
-}
 
 func (m Model) viewHeader() string {
 	headerText := " TAPI "
@@ -1017,40 +810,6 @@ func (m Model) viewTabBar() string {
 					Foreground(lipgloss.Color("#ffffff")).
 					Background(lipgloss.Color("#7D56F4")).
 					Bold(true)
-func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
-	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
-		for i, col := range collections {
-			if col.Name == collectionName {
-				for _, r := range col.Requests {
-					if r.Name == requestName {
-						// Clone the request with a " (copy)" suffix
-						dup := storage.Request{
-							Name:    r.Name + " (copy)",
-							Method:  r.Method,
-							URL:     r.URL,
-							Body:    r.Body,
-							Headers: make(map[string]string),
-						}
-						for k, v := range r.Headers {
-							dup.Headers[k] = v
-						}
-						if r.Auth != nil {
-							dup.Auth = &storage.BasicAuth{
-								Username: r.Auth.Username,
-								Password: r.Auth.Password,
-							}
-						}
-						collections[i].Requests = append(collections[i].Requests, dup)
-						if err := storage.SaveCollection(collections[i]); err != nil {
-							return ErrMsg{Err: err}
-						}
-						return tea.Batch(
-							showStatusCmd("Request duplicated", false),
-							loadCollectionsCmd(),
-						)
-					}
-				}
 			}
 			tabs = append(tabs, style.Render(tab.Label))
 		}
@@ -1087,6 +846,51 @@ func (m Model) viewDashboard() string {
 	
 	// Apply Main Layout padding
 	return MainLayoutStyle.Render(dashboard)
+}
+
+func (m Model) viewStatusBar() string {
+	logo := StatusBarLogoStyle.Render(" TAPI ")
+
+	// Mode indicator
+	var modeIndicator string
+	if m.leaderActive {
+		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#e0af68")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("LEADER")
+	} else if m.mode == ModeInsert {
+		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#9ece6a")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("INSERT")
+	} else {
+		modeIndicator = lipgloss.NewStyle().Background(lipgloss.Color("#7aa2f7")).Foreground(lipgloss.Color("#1a1b26")).Bold(true).Padding(0, 1).Render("NORMAL")
+	}
+
+	ctx := " No Env "
+	if m.currentEnv != nil {
+		ctx = " " + m.currentEnv.Name + " "
+	}
+	contextBlock := StatusBarContextStyle.Render(ctx)
+	
+	helpView := m.help.View(m.keys)
+	helpBlock := StatusBarInfoStyle.Render(helpView)
+	
+	wSoFar := lipgloss.Width(logo) + lipgloss.Width(contextBlock) + lipgloss.Width(helpBlock)
+	statusWidth := max(0, m.width - wSoFar - 4) // Adjust for padding
+	
+	statusText := m.statusText
+	if statusText == "" {
+		statusText = "Ready"
+	}
+	
+	statusStyle := StatusBarInfoStyle.Width(statusWidth)
+	if m.statusIsErr {
+		statusStyle = statusStyle.Background(ErrorColor).Foreground(White)
+	}
+	statusBlock := statusStyle.Render(statusText)
+	
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		logo,
+		modeIndicator,
+		contextBlock,
+		statusBlock,
+		helpBlock,
+	)
 }
 
 

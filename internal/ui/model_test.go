@@ -78,7 +78,7 @@ func TestExpandTilde(t *testing.T) {
 }
 
 func TestErrMsg_SurfacesToStatusBar(t *testing.T) {
-	m := NewModel()
+	m := NewModel(config.DefaultConfig())
 	m.width = 200
 	m.height = 40
 	
