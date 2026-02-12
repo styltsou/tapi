@@ -75,6 +75,11 @@ func (c *Client) Execute(req storage.Request, baseURL string) (*ProcessedRespons
 		httpReq.Header.Set(key, value)
 	}
 
+	// Apply Basic Auth if configured
+	if req.Auth != nil && req.Auth.Username != "" {
+		httpReq.SetBasicAuth(req.Auth.Username, req.Auth.Password)
+	}
+
 	// Execute request and measure time
 	start := time.Now()
 	resp, err := c.HTTPClient.Do(httpReq)

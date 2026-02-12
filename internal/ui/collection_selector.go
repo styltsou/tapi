@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/styltsou/tapi/internal/storage"
@@ -98,5 +100,10 @@ type collectionItem struct {
 }
 
 func (i collectionItem) Title() string       { return i.collection.Name }
-func (i collectionItem) Description() string { return "" }
+func (i collectionItem) Description() string {
+	if i.collection.BaseURL != "" {
+		return i.collection.BaseURL
+	}
+	return fmt.Sprintf("%d requests", len(i.collection.Requests))
+}
 func (i collectionItem) FilterValue() string { return i.collection.Name }

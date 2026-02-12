@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -167,6 +169,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		logger.Logger.Debug("Window resized", "width", msg.Width, "height", msg.Height)
 		return m, nil
+
+	case ErrMsg:
+		logger.Logger.Error("Application error", "error", msg.Err)
+		return m, showStatusCmd("Error: "+msg.Err.Error(), true)
 
 	case tea.KeyMsg:
 		// Always allow Ctrl+C to quit
@@ -483,6 +489,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case DeleteEnvMsg:
+		return m, func() tea.Msg {
+			return ConfirmActionMsg{
+				Title:     "Delete environment: " + msg.Name + "?",
+				OnConfirm: confirmedDeleteEnvMsg{Name: msg.Name},
+			}
+		}
+
+	case confirmedDeleteEnvMsg:
 		return m, deleteEnvCmd(msg.Name)
 
 	case PromptForInputMsg:
@@ -548,17 +562,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ImportCollectionMsg:
-		collections, err := importer.ImportFromFile(msg.Path)
+		importPath := expandTilde(msg.Path)
+		collections, err := importer.ImportFromFile(importPath)
 		if err != nil {
-			m.statusText = "Import failed: " + err.Error()
-			m.statusIsErr = true
-			return m, nil
+			return m, showStatusCmd("Import failed: "+err.Error(), true)
 		}
 		for _, col := range collections {
 			if saveErr := storage.SaveCollection(col); saveErr != nil {
-				m.statusText = "Import save failed: " + saveErr.Error()
-				m.statusIsErr = true
-				return m, nil
+				return m, showStatusCmd("Import save failed: "+saveErr.Error(), true)
 			}
 		}
 		// Reload and select the first imported collection
@@ -575,16 +586,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ExportCollectionMsg:
 		if m.currentCollection == nil {
-			m.statusText = "No collection selected to export"
-			m.statusIsErr = true
-			return m, nil
+			return m, showStatusCmd("No collection selected to export", true)
 		}
-		if err := storage.ExportCollection(m.currentCollection.Name, msg.DestPath); err != nil {
-			m.statusText = "Export failed: " + err.Error()
-			m.statusIsErr = true
-			return m, nil
+		exportPath := expandTilde(msg.DestPath)
+		if err := storage.ExportCollection(m.currentCollection.Name, exportPath); err != nil {
+			return m, showStatusCmd("Export failed: "+err.Error(), true)
 		}
-		return m, showStatusCmd("Exported to "+msg.DestPath, false)
+		return m, showStatusCmd("Exported to "+exportPath, false)
 
 	case ConfirmActionMsg:
 		m.state = ViewInput
@@ -621,18 +629,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SaveResponseBodyMsg:
 		m.state = ViewCollectionList
-		
-		err := os.WriteFile(msg.Filename, msg.Body, 0644)
-		if err != nil {
-			m.statusText = "Error saving file: " + err.Error()
-			m.statusIsErr = true
-		} else {
-			m.statusText = "Saved to " + msg.Filename
-			m.statusIsErr = false
-		}
-		// Refocus response pane?
 		m.focusedPane = PaneResponse
-		return m, nil
+		savePath := expandTilde(msg.Filename)
+		err := os.WriteFile(savePath, msg.Body, 0644)
+
+		if err != nil {
+			return m, showStatusCmd("Error saving file: "+err.Error(), true)
+		}
+		return m, showStatusCmd("Saved to "+savePath, false)
 	}
 
 	// Route updates based on focus and state
@@ -802,6 +806,23 @@ func (m *Model) applyCurrentEnv(req storage.Request) storage.Request {
 	return req
 }
 
+// confirmedDeleteEnvMsg is the internal message sent after user confirms env deletion
+type confirmedDeleteEnvMsg struct {
+	Name string
+}
+
+// expandTilde replaces a leading ~ with the user's home directory
+func expandTilde(path string) string {
+	if strings.HasPrefix(path, "~/") || path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return filepath.Join(home, path[1:])
+	}
+	return path
+}
+
 // ========================================
 // Command Functions
 // ========================================
@@ -941,7 +962,32 @@ func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
 	}
 }
 
-// --- View Helper Methods ---
+
+func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
+	return func() tea.Msg {
+		collections, _ := storage.LoadCollections()
+		for i, col := range collections {
+			if col.Name == collectionName {
+				// Filter out the request
+				newRequests := []storage.Request{}
+				for _, r := range col.Requests {
+					if r.Name != requestName {
+						newRequests = append(newRequests, r)
+					}
+				}
+				collections[i].Requests = newRequests
+				if err := storage.SaveCollection(collections[i]); err != nil {
+					return ErrMsg{Err: err}
+				}
+				return tea.Batch(
+					showStatusCmd("Request deleted", false),
+					loadCollectionsCmd(),
+				)
+			}
+		}
+		return ErrMsg{Err: fmt.Errorf("request %q not found in collection %q", requestName, collectionName)}
+	}
+}
 
 func (m Model) viewHeader() string {
 	headerText := " TAPI "
@@ -971,6 +1017,40 @@ func (m Model) viewTabBar() string {
 					Foreground(lipgloss.Color("#ffffff")).
 					Background(lipgloss.Color("#7D56F4")).
 					Bold(true)
+func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
+	return func() tea.Msg {
+		collections, _ := storage.LoadCollections()
+		for i, col := range collections {
+			if col.Name == collectionName {
+				for _, r := range col.Requests {
+					if r.Name == requestName {
+						// Clone the request with a " (copy)" suffix
+						dup := storage.Request{
+							Name:    r.Name + " (copy)",
+							Method:  r.Method,
+							URL:     r.URL,
+							Body:    r.Body,
+							Headers: make(map[string]string),
+						}
+						for k, v := range r.Headers {
+							dup.Headers[k] = v
+						}
+						if r.Auth != nil {
+							dup.Auth = &storage.BasicAuth{
+								Username: r.Auth.Username,
+								Password: r.Auth.Password,
+							}
+						}
+						collections[i].Requests = append(collections[i].Requests, dup)
+						if err := storage.SaveCollection(collections[i]); err != nil {
+							return ErrMsg{Err: err}
+						}
+						return tea.Batch(
+							showStatusCmd("Request duplicated", false),
+							loadCollectionsCmd(),
+						)
+					}
+				}
 			}
 			tabs = append(tabs, style.Render(tab.Label))
 		}

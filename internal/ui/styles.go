@@ -141,6 +141,8 @@ func MethodBadge(method string) string {
 		style = style.Background(MethodPatchColor)
 	case "OPTIONS":
 		style = style.Background(MethodOptionsColor).Foreground(Black) // Dark text for light background
+	case "HEAD":
+		style = style.Background(Gray).Foreground(White)
 	default:
 		style = style.Background(Gray)
 	}
