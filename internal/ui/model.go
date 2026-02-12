@@ -41,13 +41,7 @@ const (
 	ModeInsert
 )
 
-// RequestTab represents an open request tab
-type RequestTab struct {
-	Request  storage.Request
-	BaseURL  string
-	Response *http.ProcessedResponse
-	Label    string // e.g. "GET /users"
-}
+
 
 // Model is the main application model that manages state and sub-models
 type Model struct {
@@ -367,13 +361,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	
 	case CopyAsCurlMsg:
+		// Delegate to leader key handler logic
 		req, targetedURL := m.request.buildRequest()
 		if targetedURL != "" {
 			req.URL = targetedURL
 		}
 		curlCmd := exporter.ExportCurl(req, m.request.baseURL)
-		err := clipboard.WriteAll(curlCmd)
-		if err != nil {
+		if err := clipboard.WriteAll(curlCmd); err != nil {
 			return m, showStatusCmd("Failed to copy cURL", true)
 		}
 		return m, showStatusCmd("cURL copied to clipboard", false)
@@ -482,8 +476,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeTab = len(m.tabs) - 1
 		m.request.LoadRequest(msg.Request, msg.BaseURL)
 		// Clear response for new tab
+		w, h := m.response.width, m.response.height
 		m.response = NewResponseModel()
-		m.response.SetSize(m.response.width, m.response.height)
+		m.response.SetSize(w, h)
 		m.focusedPane = PaneRequest
 		return m, nil
 
@@ -637,6 +632,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focusedPane = PaneResponse
 		savePath := expandTilde(msg.Filename)
 		err := os.WriteFile(savePath, msg.Body, 0644)
+
 		if err != nil {
 			return m, showStatusCmd("Error saving file: "+err.Error(), true)
 		}
@@ -689,14 +685,14 @@ func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Initializing..."
 	}
-    
-    // Check if terminal is too small
-    if m.tooSmall {
-        return lipgloss.Place(m.width, m.height,
-            lipgloss.Center, lipgloss.Center,
-            fmt.Sprintf("Terminal is too small.\nPlease resize to at least %dx%d.", minWidth, minHeight),
-        )
-    }
+
+	// Check if terminal is too small
+	if m.tooSmall {
+		return lipgloss.Place(m.width, m.height,
+			lipgloss.Center, lipgloss.Center,
+			fmt.Sprintf("Terminal is too small.\nPlease resize to at least %dx%d.", minWidth, minHeight),
+		)
+	}
 
 	// Welcome screen
 	if m.state == ViewWelcome {
@@ -704,66 +700,13 @@ func (m Model) View() string {
 	}
 
 	// 1. Header
-	headerText := " TAPI "
-	if m.currentCollection != nil {
-		headerText += " • " + m.currentCollection.Name
-	}
-	header := TitleStyle.Render(headerText)
-	if m.currentEnv != nil {
-		header += " " + StatusStyle.Render("Env: "+m.currentEnv.Name)
-	}
-	header += "\n"
+	header := m.viewHeader()
 
 	// Tab Bar
-	var tabBar string
-	if len(m.tabs) > 0 {
-		var tabs []string
-		for i, tab := range m.tabs {
-			style := lipgloss.NewStyle().
-				Padding(0, 1).
-				Foreground(lipgloss.Color("#555555")).
-				Background(lipgloss.Color("#1a1b26"))
-			
-			if i == m.activeTab {
-				style = style.
-					Foreground(lipgloss.Color("#ffffff")).
-					Background(lipgloss.Color("#7D56F4")).
-					Bold(true)
-			}
-			tabs = append(tabs, style.Render(tab.Label))
-		}
-		tabBar = lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-		tabBar += "\n"
-	}
+	tabBar := m.viewTabBar()
 
 	// 2. Dashboard Content
-	var sidebar, request, response string
-	
-	sStyle, rStyle, respStyle := InactivePaneStyle, InactivePaneStyle, InactivePaneStyle
-	switch m.focusedPane {
-	case PaneCollections:
-		sStyle = ActivePaneStyle
-	case PaneRequest:
-		rStyle = ActivePaneStyle
-	case PaneResponse:
-		respStyle = ActivePaneStyle
-	}
-
-	if m.sidebarVisible {
-		sidebar = sStyle.Width(m.collections.width).Height(m.collections.height).Render(m.collections.View())
-	}
-	request = rStyle.Width(m.request.width).Height(m.request.height).Render(m.request.View())
-	response = respStyle.Width(m.response.width).Height(m.response.height).Render(m.response.View())
-
-	var dashboard string
-	if m.sidebarVisible {
-		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, request, response)
-	} else {
-		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, request, response)
-	}
-	
-	// Apply Main Layout padding
-	dashboard = MainLayoutStyle.Render(dashboard)
+	dashboard := m.viewDashboard()
 
 	// 3. Status Bar
 	logo := StatusBarLogoStyle.Render(" TAPI ")
@@ -1019,6 +962,7 @@ func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
 	}
 }
 
+
 func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
 	return func() tea.Msg {
 		collections, _ := storage.LoadCollections()
@@ -1045,42 +989,34 @@ func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
 	}
 }
 
-func deleteCollectionCmd(name string) tea.Cmd {
-	return func() tea.Msg {
-		if err := storage.DeleteCollection(name); err != nil {
-			return ErrMsg{Err: err}
-		}
-		return tea.Batch(
-			showStatusCmd("Collection deleted", false),
-			loadCollectionsCmd(),
-		)
+func (m Model) viewHeader() string {
+	headerText := " TAPI "
+	if m.currentCollection != nil {
+		headerText += " • " + m.currentCollection.Name
 	}
+	header := TitleStyle.Render(headerText)
+	if m.currentEnv != nil {
+		header += " " + StatusStyle.Render("Env: "+m.currentEnv.Name)
+	}
+	header += "\n"
+	return header
 }
 
-func renameCollectionCmd(oldName, newName string) tea.Cmd {
-	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
-		for _, col := range collections {
-			if col.Name == oldName {
-				// 1. Delete old
-				if err := storage.DeleteCollection(oldName); err != nil {
-					return ErrMsg{Err: err}
-				}
-				// 2. Save as new
-				col.Name = newName
-				if err := storage.SaveCollection(col); err != nil {
-					return ErrMsg{Err: err}
-				}
-				return tea.Batch(
-					showStatusCmd("Collection renamed", false),
-					loadCollectionsCmd(),
-				)
-			}
-		}
-		return ErrMsg{Err: fmt.Errorf("collection not found")}
-	}
-}
-
+func (m Model) viewTabBar() string {
+	var tabBar string
+	if len(m.tabs) > 0 {
+		var tabs []string
+		for i, tab := range m.tabs {
+			style := lipgloss.NewStyle().
+				Padding(0, 1).
+				Foreground(lipgloss.Color("#555555")).
+				Background(lipgloss.Color("#1a1b26"))
+			
+			if i == m.activeTab {
+				style = style.
+					Foreground(lipgloss.Color("#ffffff")).
+					Background(lipgloss.Color("#7D56F4")).
+					Bold(true)
 func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
 	return func() tea.Msg {
 		collections, _ := storage.LoadCollections()
@@ -1116,63 +1052,43 @@ func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
 					}
 				}
 			}
+			tabs = append(tabs, style.Render(tab.Label))
 		}
-		return ErrMsg{Err: fmt.Errorf("request not found")}
+		tabBar = lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+		tabBar += "\n"
 	}
+	return tabBar
 }
 
-// --- Tab Helper Methods ---
-
-func (m *Model) saveCurrentTab() {
-	if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
-		req, _ := m.request.buildRequest()
-		m.tabs[m.activeTab].Request = req
-		// Response is already saved on ResponseReadyMsg, but we can ensure it here if needed
-		// m.tabs[m.activeTab].Response = m.response.GetResponse() // (if GetResponse existed)
-	}
-}
-
-func (m *Model) loadActiveTab() {
-	if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
-		tab := m.tabs[m.activeTab]
-		m.request.LoadRequest(tab.Request, tab.BaseURL)
-		
-		if tab.Response != nil {
-			m.response.SetResponse(tab.Response, tab.Request)
-			m.response.SetLoading(false)
-		} else {
-			// Clear response pane for new/empty tab
-			m.response = NewResponseModel()
-			m.response.SetSize(m.response.width, m.response.height)
-		}
-	}
-}
-
-func (m *Model) closeTab(index int) {
-	if index < 0 || index >= len(m.tabs) {
-		return
+func (m Model) viewDashboard() string {
+	sStyle, rStyle, respStyle := InactivePaneStyle, InactivePaneStyle, InactivePaneStyle
+	switch m.focusedPane {
+	case PaneCollections:
+		sStyle = ActivePaneStyle
+	case PaneRequest:
+		rStyle = ActivePaneStyle
+	case PaneResponse:
+		respStyle = ActivePaneStyle
 	}
 
-	// Remove tab at index
-	m.tabs = append(m.tabs[:index], m.tabs[index+1:]...)
-
-	// Adjust active tab
-	if m.activeTab >= len(m.tabs) {
-		m.activeTab = len(m.tabs) - 1
+	var sidebar string
+	if m.sidebarVisible {
+		sidebar = sStyle.Width(m.collections.width).Height(m.collections.height).Render(m.collections.View())
 	}
-	if m.activeTab < 0 {
-		m.activeTab = 0
-	}
+	request := rStyle.Width(m.request.width).Height(m.request.height).Render(m.request.View())
+	response := respStyle.Width(m.response.width).Height(m.response.height).Render(m.response.View())
 
-	// If no tabs left, clear request/response or load welcome?
-	if len(m.tabs) == 0 {
-		m.activeTab = -1
-		// For now, let's keep the dashboard but maybe clear it
-		m.request = NewRequestModel()
-		m.response = NewResponseModel()
-		m.request.SetSize(m.request.width, m.request.height)
-		m.response.SetSize(m.response.width, m.response.height)
+	var dashboard string
+	if m.sidebarVisible {
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, request, response)
 	} else {
-		m.loadActiveTab()
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, request, response)
 	}
+	
+	// Apply Main Layout padding
+	return MainLayoutStyle.Render(dashboard)
 }
+
+
+
+
