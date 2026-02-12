@@ -1,6 +1,8 @@
-package ui
+package components
 
 import (
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"sort"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -11,9 +13,9 @@ import (
 // SuggestionModel handles the autocomplete popup
 type SuggestionModel struct {
 	list    list.Model
-	visible bool
-	width   int
-	height  int
+	Visible bool
+	Width   int
+	Height  int
 	filter  string
 	
 	onSelect func(string) tea.Msg
@@ -40,7 +42,7 @@ func NewSuggestionModel() SuggestionModel {
 
 	return SuggestionModel{
 		list:    l,
-		visible: false,
+		Visible: false,
 	}
 }
 
@@ -66,23 +68,23 @@ func (m *SuggestionModel) Show(options map[string]string, filter string, onSelec
 	
 	m.onSelect = onSelect
 	m.onCancel = onCancel
-	m.visible = true
+	m.Visible = true
 	m.list.Select(0)
 }
 
 func (m *SuggestionModel) Hide() {
-	m.visible = false
+	m.Visible = false
 }
 
 func (m *SuggestionModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 	// Suggestion box is small
 	m.list.SetSize(30, 10)
 }
 
 func (m SuggestionModel) Update(msg tea.Msg) (SuggestionModel, tea.Cmd) {
-	if !m.visible {
+	if !m.Visible {
 		return m, nil
 	}
 
@@ -113,10 +115,10 @@ func (m SuggestionModel) Update(msg tea.Msg) (SuggestionModel, tea.Cmd) {
 }
 
 func (m SuggestionModel) View() string {
-	if !m.visible {
+	if !m.Visible {
 		return ""
 	}
-	// Use a distinct style for suggestion popup, maybe reusing ModalStyle but smaller/different position?
-	// For now, ModalStyle is fine.
-	return ModalStyle.Render(m.list.View())
+	// Use a distinct style for suggestion popup, maybe reusing styles.ModalStyle but smaller/different position?
+	// For now, styles.ModalStyle is fine.
+	return styles.ModalStyle.Render(m.list.View())
 }

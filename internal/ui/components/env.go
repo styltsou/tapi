@@ -1,7 +1,10 @@
 // internal/ui/env_model.go
-package ui
+package components
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/styltsou/tapi/internal/storage"
@@ -9,9 +12,9 @@ import (
 
 // EnvModel handles the environment selector modal
 type EnvModel struct {
-	width        int
-	height       int
-	visible      bool
+	Width        int
+	Height       int
+	Visible      bool
 	environments []storage.Environment
 	list         list.Model
 	selected     *storage.Environment
@@ -24,13 +27,13 @@ func NewEnvModel() EnvModel {
 
 	return EnvModel{
 		list:    l,
-		visible: false,
+		Visible: false,
 	}
 }
 
 func (m *EnvModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 	// Modal is centered and smaller
 	m.list.SetSize(width/2, height/2)
 }
@@ -54,44 +57,44 @@ func (m EnvModel) Update(msg tea.Msg) (EnvModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
-			m.visible = false
+			m.Visible = false
 			return m, nil
 
 		case "enter":
 			if selected, ok := m.list.SelectedItem().(envItem); ok {
 				if selected.isCreate {
-					m.visible = false
+					m.Visible = false
 					// Prompt for environment name
 					return m, func() tea.Msg {
-						return PromptForInputMsg{
+						return uimsg.PromptForInputMsg{
 							Title:       "Create New Environment",
 							Placeholder: "Enter environment name",
 							OnCommit: func(val string) tea.Msg {
-								return CreateEnvMsg{Name: val}
+								return uimsg.CreateEnvMsg{Name: val}
 							},
 						}
 					}
 				}
 
 				m.selected = &selected.env
-				m.visible = false
+				m.Visible = false
 
 				return m, func() tea.Msg {
-					return EnvChangedMsg{NewEnv: selected.env}
+					return uimsg.EnvChangedMsg{NewEnv: selected.env}
 				}
 			}
 
 		case "e":
 			if selected, ok := m.list.SelectedItem().(envItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
-					return FocusMsg{Target: ViewEnvEditor, Data: selected.env}
+					return uimsg.FocusMsg{Target: uimsg.ViewEnvEditor, Data: selected.env}
 				}
 			}
 		
 		case "d", "x":
 			if selected, ok := m.list.SelectedItem().(envItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
-					return DeleteEnvMsg{Name: selected.env.Name}
+					return uimsg.DeleteEnvMsg{Name: selected.env.Name}
 				}
 			}
 		}
@@ -103,12 +106,12 @@ func (m EnvModel) Update(msg tea.Msg) (EnvModel, tea.Cmd) {
 }
 
 func (m EnvModel) View() string {
-	if !m.visible {
+	if !m.Visible {
 		return ""
 	}
 
 	// Centered modal styling
-	return ModalStyle.Render(m.list.View())
+	return styles.ModalStyle.Render(m.list.View())
 }
 
 // envItem implements list.Item interface

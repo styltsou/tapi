@@ -1,6 +1,9 @@
-package ui
+package components
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -14,8 +17,8 @@ type EnvEditorModel struct {
 	env     storage.Environment
 	inputs  []VarInput
 	focused int
-	width   int
-	height  int
+	Width   int
+	Height  int
 }
 
 type VarInput struct {
@@ -67,8 +70,8 @@ func (m *EnvEditorModel) AddRow() {
 }
 
 func (m *EnvEditorModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 }
 
 func (m EnvEditorModel) Update(msg tea.Msg) (EnvEditorModel, tea.Cmd) {
@@ -78,7 +81,7 @@ func (m EnvEditorModel) Update(msg tea.Msg) (EnvEditorModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
-			return m, func() tea.Msg { return BackMsg{} }
+			return m, func() tea.Msg { return uimsg.BackMsg{} }
 		
 		case "ctrl+s":
 			// Save variables back to env
@@ -193,13 +196,13 @@ func (m *EnvEditorModel) updateFocus() {
 func (m EnvEditorModel) View() string {
 	var sb strings.Builder
 	
-	sb.WriteString(TitleStyle.Render(" Editing: " + m.env.Name + " "))
+	sb.WriteString(styles.TitleStyle.Render(" Editing: " + m.env.Name + " "))
 	sb.WriteString("\n\n")
 
 	// Header row
 	header := lipgloss.JoinHorizontal(lipgloss.Left,
-		HeaderStyle.Width(24).Render("VARIABLE"),
-		HeaderStyle.Width(44).Render("VALUE"),
+		styles.HeaderStyle.Width(24).Render("VARIABLE"),
+		styles.HeaderStyle.Width(44).Render("VALUE"),
 	)
 	sb.WriteString(header + "\n")
 
@@ -210,18 +213,18 @@ func (m EnvEditorModel) View() string {
 		}
 
 		row := lipgloss.JoinHorizontal(lipgloss.Center,
-			SelectedStyle.Render(prefix),
+			styles.SelectedStyle.Render(prefix),
 			input.key.View(),
-			DimStyle.Render(" : "),
+			styles.DimStyle.Render(" : "),
 			input.value.View(),
 		)
 		sb.WriteString(row + "\n")
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(FooterStyle.Render("Ctrl+S: Save | Esc: Cancel | Ctrl+A: Add Row | Ctrl+D: Delete Row"))
+	sb.WriteString(styles.FooterStyle.Render("Ctrl+S: Save | Esc: Cancel | Ctrl+A: Add Row | Ctrl+D: Delete Row"))
 
-	return ModalStyle.Render(sb.String())
+	return styles.ModalStyle.Render(sb.String())
 }
 
 type SaveEnvMsg struct {

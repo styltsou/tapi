@@ -4,9 +4,7 @@ package http
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -50,17 +48,9 @@ func (c *Client) Execute(req storage.Request, baseURL string) (*ProcessedRespons
 	defer cancel()
 
 	// Resolve URL robustly
-	fullURL := req.URL
-	if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") && baseURL != "" {
-		base, err := url.Parse(baseURL)
-		if err != nil {
-			return nil, fmt.Errorf("invalid base URL: %w", err)
-		}
-		rel, err := url.Parse(req.URL)
-		if err != nil {
-			return nil, fmt.Errorf("invalid relative URL: %w", err)
-		}
-		fullURL = base.ResolveReference(rel).String()
+	fullURL, err := ResolveURL(baseURL, req.URL)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create HTTP request with context

@@ -1,6 +1,8 @@
-package ui
+package components
 
 import (
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -8,12 +10,12 @@ import (
 
 // InputModel is a generic model for prompting user input
 type InputModel struct {
-	textInput   textinput.Model
-	title       string
-	onCommitMsg func(value string) tea.Msg
-	onCancelMsg func() tea.Msg
-	width       int
-	height      int
+	TextInput   textinput.Model
+	Title       string
+	OnCommitMsg func(value string) tea.Msg
+	OnCancelMsg func() tea.Msg
+	Width       int
+	Height      int
 }
 
 func NewInputModel(title string, placeholder string, onCommit func(string) tea.Msg, onCancel func() tea.Msg) InputModel {
@@ -24,15 +26,15 @@ func NewInputModel(title string, placeholder string, onCommit func(string) tea.M
 	ti.Width = 40
 
 	return InputModel{
-		textInput:   ti,
-		title:       title,
-		onCommitMsg: onCommit,
-		onCancelMsg: onCancel,
+		TextInput:   ti,
+		Title:       title,
+		OnCommitMsg: onCommit,
+		OnCancelMsg: onCancel,
 	}
 }
 
 func (m *InputModel) SetValue(val string) {
-	m.textInput.SetValue(val)
+	m.TextInput.SetValue(val)
 }
 
 func (m InputModel) Init() tea.Cmd {
@@ -46,21 +48,21 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyEnter:
-			if m.onCommitMsg != nil {
+			if m.OnCommitMsg != nil {
 				return m, func() tea.Msg {
-					return m.onCommitMsg(m.textInput.Value())
+					return m.OnCommitMsg(m.TextInput.Value())
 				}
 			}
 		case tea.KeyEsc:
-			if m.onCancelMsg != nil {
+			if m.OnCancelMsg != nil {
 				return m, func() tea.Msg {
-					return m.onCancelMsg()
+					return m.OnCancelMsg()
 				}
 			}
 		}
 	}
 
-	m.textInput, cmd = m.textInput.Update(msg)
+	m.TextInput, cmd = m.TextInput.Update(msg)
 	return m, cmd
 }
 
@@ -68,20 +70,20 @@ func (m InputModel) View() string {
 	// Minimal floating prompt — LazyVim command-line style
 	inputStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(PrimaryColor).
+		BorderForeground(styles.PrimaryColor).
 		Padding(0, 2).
 		Width(50)
 
 	titleLine := lipgloss.NewStyle().
-		Foreground(PrimaryColor).
+		Foreground(styles.PrimaryColor).
 		Bold(true).
-		Render(m.title)
+		Render(m.Title)
 
-	hintLine := DimStyle.Render("Enter: confirm  Esc: cancel")
+	hintLine := styles.DimStyle.Render("Enter: confirm  Esc: cancel")
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		titleLine,
-		m.textInput.View(),
+		m.TextInput.View(),
 		hintLine,
 	)
 
@@ -89,6 +91,6 @@ func (m InputModel) View() string {
 }
 
 func (m *InputModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 }

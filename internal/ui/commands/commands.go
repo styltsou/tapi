@@ -1,6 +1,8 @@
-package ui
+package commands
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+
 	"fmt"
 
 	"os"
@@ -10,9 +12,9 @@ import (
 	"github.com/styltsou/tapi/internal/storage"
 )
 
-func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
+func DeleteRequestCmd(collectionName, requestName string) tea.Cmd {
 	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
+		collections, _, _ := storage.LoadCollections()
 		for i, col := range collections {
 			if col.Name == collectionName {
 				// Filter out the request
@@ -24,57 +26,57 @@ func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
 				}
 				collections[i].Requests = newRequests
 				if err := storage.SaveCollection(collections[i]); err != nil {
-					return ErrMsg{Err: err}
+					return uimsg.ErrMsg{Err: err}
 				}
 				return tea.Batch(
-					showStatusCmd("Request deleted", false),
-					loadCollectionsCmd(),
+					ShowStatusCmd("Request deleted", false),
+					LoadCollectionsCmd(),
 				)
 			}
 		}
-		return ErrMsg{Err: fmt.Errorf("collection %q not found", collectionName)}
+		return uimsg.ErrMsg{Err: fmt.Errorf("collection %q not found", collectionName)}
 	}
 }
 
-func deleteCollectionCmd(name string) tea.Cmd {
+func DeleteCollectionCmd(name string) tea.Cmd {
 	return func() tea.Msg {
 		if err := storage.DeleteCollection(name); err != nil {
-			return ErrMsg{Err: err}
+			return uimsg.ErrMsg{Err: err}
 		}
 		return tea.Batch(
-			showStatusCmd("Collection deleted", false),
-			loadCollectionsCmd(),
+			ShowStatusCmd("Collection deleted", false),
+			LoadCollectionsCmd(),
 		)
 	}
 }
 
-func renameCollectionCmd(oldName, newName string) tea.Cmd {
+func RenameCollectionCmd(oldName, newName string) tea.Cmd {
 	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
+		collections, _, _ := storage.LoadCollections()
 		for _, col := range collections {
 			if col.Name == oldName {
 				// 1. Delete old
 				if err := storage.DeleteCollection(oldName); err != nil {
-					return ErrMsg{Err: err}
+					return uimsg.ErrMsg{Err: err}
 				}
 				// 2. Save as new
 				col.Name = newName
 				if err := storage.SaveCollection(col); err != nil {
-					return ErrMsg{Err: err}
+					return uimsg.ErrMsg{Err: err}
 				}
 				return tea.Batch(
-					showStatusCmd("Collection renamed", false),
-					loadCollectionsCmd(),
+					ShowStatusCmd("Collection renamed", false),
+					LoadCollectionsCmd(),
 				)
 			}
 		}
-		return ErrMsg{Err: fmt.Errorf("collection not found")}
+		return uimsg.ErrMsg{Err: fmt.Errorf("collection not found")}
 	}
 }
 
-func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
+func DuplicateRequestCmd(collectionName, requestName string) tea.Cmd {
 	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
+		collections, _, _ := storage.LoadCollections()
 		for i, col := range collections {
 			if col.Name == collectionName {
 				for _, r := range col.Requests {
@@ -97,117 +99,120 @@ func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
 						}
 						collections[i].Requests = append(collections[i].Requests, dup)
 						if err := storage.SaveCollection(collections[i]); err != nil {
-							return ErrMsg{Err: err}
+							return uimsg.ErrMsg{Err: err}
 						}
 						return tea.Batch(
-							showStatusCmd("Request duplicated", false),
-							loadCollectionsCmd(),
+							ShowStatusCmd("Request duplicated", false),
+							LoadCollectionsCmd(),
 						)
 					}
 				}
 			}
 		}
-		return ErrMsg{Err: fmt.Errorf("request not found")}
+		return uimsg.ErrMsg{Err: fmt.Errorf("request not found")}
 	}
 }
 
-func loadCollectionsCmd() tea.Cmd {
+func LoadCollectionsCmd() tea.Cmd {
 	return func() tea.Msg {
-		collections, err := storage.LoadCollections()
+		collections, loadErrs, err := storage.LoadCollections()
 		if err != nil {
-			return ErrMsg{Err: err}
+			return uimsg.ErrMsg{Err: err}
 		}
-		return CollectionsLoadedMsg{Collections: collections}
+		return uimsg.CollectionsLoadedMsg{
+			Collections: collections,
+			LoadErrors:  loadErrs,
+		}
 	}
 }
 
-func executeRequestCmd(httpClient *http.Client, req storage.Request, baseURL string) tea.Cmd {
+func ExecuteRequestCmd(httpClient *http.Client, req storage.Request, baseURL string) tea.Cmd {
 	return func() tea.Msg {
 		response, err := httpClient.Execute(req, baseURL)
 		if err != nil {
-			return ErrMsg{Err: err}
+			return uimsg.ErrMsg{Err: err}
 		}
-		return ResponseReadyMsg{Response: response, Request: req}
+		return uimsg.ResponseReadyMsg{Response: response, Request: req}
 	}
 }
 
-func saveRequestCmd(req storage.Request) tea.Cmd {
+func SaveRequestCmd(req storage.Request) tea.Cmd {
 	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
+		collections, _, _ := storage.LoadCollections()
 		for i, col := range collections {
 			for j, r := range col.Requests {
 				if r.Name == req.Name {
 					collections[i].Requests[j] = req
 					if err := storage.SaveCollection(collections[i]); err != nil {
-						return ErrMsg{Err: err}
+						return uimsg.ErrMsg{Err: err}
 					}
-					return StatusMsg{Message: "Request saved", IsError: false}
+					return uimsg.StatusMsg{Message: "Request saved", IsError: false}
 				}
 			}
 		}
-		return ErrMsg{Err: fmt.Errorf("collection not found for request %s", req.Name)}
+		return uimsg.ErrMsg{Err: fmt.Errorf("collection not found for request %s", req.Name)}
 	}
 }
 
-func saveCollectionCmd(col storage.Collection) tea.Cmd {
+func SaveCollectionCmd(col storage.Collection) tea.Cmd {
 	return func() tea.Msg {
 		if err := storage.SaveCollection(col); err != nil {
-			return ErrMsg{Err: err}
+			return uimsg.ErrMsg{Err: err}
 		}
-		return StatusMsg{Message: "Collection saved", IsError: false}
+		return uimsg.StatusMsg{Message: "Collection saved", IsError: false}
 	}
 }
 
-func showStatusCmd(message string, isError bool) tea.Cmd {
+func ShowStatusCmd(message string, isError bool) tea.Cmd {
 	return func() tea.Msg {
-		return StatusMsg{Message: message, IsError: isError}
+		return uimsg.StatusMsg{Message: message, IsError: isError}
 	}
 }
 
-func loadEnvsCmd() tea.Cmd {
+func LoadEnvsCmd() tea.Cmd {
 	return func() tea.Msg {
 		envs, err := storage.LoadEnvironments()
 		if err != nil {
-			return ErrMsg{Err: err}
+			return uimsg.ErrMsg{Err: err}
 		}
-		return EnvsLoadedMsg{Envs: envs}
+		return uimsg.EnvsLoadedMsg{Envs: envs}
 	}
 }
 
-func saveEnvCmd(env storage.Environment) tea.Cmd {
+func SaveEnvCmd(env storage.Environment) tea.Cmd {
 	return func() tea.Msg {
 		if err := storage.SaveEnvironment(env); err != nil {
-			return ErrMsg{Err: err}
+			return uimsg.ErrMsg{Err: err}
 		}
 		return tea.Batch(
-			showStatusCmd("Environment saved", false),
-			func() tea.Msg { return BackMsg{} },
+			ShowStatusCmd("Environment saved", false),
+			func() tea.Msg { return uimsg.BackMsg{} },
 			func() tea.Msg {
 				envs, _ := storage.LoadEnvironments()
-				return EnvsLoadedMsg{Envs: envs}
+				return uimsg.EnvsLoadedMsg{Envs: envs}
 			},
 		)
 	}
 }
 
-func deleteEnvCmd(name string) tea.Cmd {
+func DeleteEnvCmd(name string) tea.Cmd {
 	return func() tea.Msg {
 		if err := storage.DeleteEnvironment(name); err != nil {
-			return ErrMsg{Err: err}
+			return uimsg.ErrMsg{Err: err}
 		}
 		return tea.Batch(
-			showStatusCmd("Environment deleted", false),
+			ShowStatusCmd("Environment deleted", false),
 			func() tea.Msg {
 				envs, _ := storage.LoadEnvironments()
-				return EnvsLoadedMsg{Envs: envs}
+				return uimsg.EnvsLoadedMsg{Envs: envs}
 			},
 		)
 	}
 }
 
-func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
+func CreateRequestCmd(collectionName string, req storage.Request) tea.Cmd {
 	return func() tea.Msg {
-		collections, _ := storage.LoadCollections()
+		collections, _, _ := storage.LoadCollections()
 		
 		// Find or create collection
 		var targetCol *storage.Collection
@@ -227,7 +232,7 @@ func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
 			// Create new collection
 			newCol := storage.Collection{Name: collectionName, Requests: []storage.Request{req}}
 			if err := storage.SaveCollection(newCol); err != nil {
-				return ErrMsg{Err: err}
+				return uimsg.ErrMsg{Err: err}
 			}
 		} else {
 			// Add to existing
@@ -235,23 +240,23 @@ func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
 			// Update in list
 			collections[targetIdx] = *targetCol
 			if err := storage.SaveCollection(*targetCol); err != nil {
-				return ErrMsg{Err: err}
+				return uimsg.ErrMsg{Err: err}
 			}
 		}
 
 		return tea.Batch(
-			showStatusCmd("Request created", false),
-			loadCollectionsCmd(),
+			ShowStatusCmd("Request created", false),
+			LoadCollectionsCmd(),
 		)
 	}
 }
 
-func saveResponseBodyCmd(filename string, body []byte) tea.Cmd {
+func SaveResponseBodyCmd(filename string, body []byte) tea.Cmd {
 	return func() tea.Msg {
 		err := os.WriteFile(filename, body, 0644)
 		if err != nil {
-			return ErrMsg{Err: fmt.Errorf("error saving file: %w", err)}
+			return uimsg.ErrMsg{Err: fmt.Errorf("error saving file: %w", err)}
 		}
-		return StatusMsg{Message: "Saved to " + filename, IsError: false}
+		return uimsg.StatusMsg{Message: "Saved to " + filename, IsError: false}
 	}
 }

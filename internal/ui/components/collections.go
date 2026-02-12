@@ -1,7 +1,10 @@
 // internal/ui/collections_model.go
-package ui
+package components
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/styltsou/tapi/internal/storage"
@@ -9,8 +12,8 @@ import (
 
 // CollectionsModel handles the collections list view
 type CollectionsModel struct {
-	width       int
-	height      int
+	Width       int
+	Height      int
 	collection  storage.Collection
 	list        list.Model
 }
@@ -19,15 +22,15 @@ func NewCollectionsModel() CollectionsModel {
 	d := list.NewDefaultDelegate()
 	d.ShowDescription = true
 	d.SetHeight(2)
-	d.Styles.SelectedTitle = SelectedStyle
-	d.Styles.SelectedDesc = SelectedStyle.Copy().Foreground(Gray)
+	d.Styles.SelectedTitle = styles.SelectedStyle
+	d.Styles.SelectedDesc = styles.SelectedStyle.Copy().Foreground(styles.Gray)
 
 	l := list.New([]list.Item{}, d, 0, 0)
 	l.Title = "Requests"
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
-	l.Styles.Title = TitleStyle
+	l.Styles.Title = styles.TitleStyle
 
 	return CollectionsModel{
 		list: l,
@@ -35,8 +38,8 @@ func NewCollectionsModel() CollectionsModel {
 }
 
 func (m *CollectionsModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 	m.list.SetSize(width-4, height-4)
 }
 
@@ -72,18 +75,18 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 			if selected, ok := m.list.SelectedItem().(requestItem); ok {
 				if selected.isCreate {
 					return m, func() tea.Msg {
-						return PromptForInputMsg{
+						return uimsg.PromptForInputMsg{
 							Title:       "Create New Request",
 							Placeholder: "Enter request name",
 							OnCommit: func(val string) tea.Msg {
-								return CreateRequestMsg{Name: val}
+								return uimsg.CreateRequestMsg{Name: val}
 							},
 						}
 					}
 				}
 
 				return m, func() tea.Msg {
-					return RequestSelectedMsg{
+					return uimsg.RequestSelectedMsg{
 						Request: selected.request,
 						BaseURL: selected.collection.BaseURL,
 					}
@@ -93,9 +96,9 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 		case "d": // Delete Request (with confirmation)
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
-					return ConfirmActionMsg{
+					return uimsg.ConfirmActionMsg{
 						Title: "Delete request: " + selected.request.Name + "?",
-						OnConfirm: DeleteRequestMsg{
+						OnConfirm: uimsg.DeleteRequestMsg{
 							CollectionName: selected.collection.Name,
 							RequestName:    selected.request.Name,
 						},
@@ -106,9 +109,9 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 		case "D": // Delete Collection (with confirmation)
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
-					return ConfirmActionMsg{
+					return uimsg.ConfirmActionMsg{
 						Title:     "Delete collection: " + selected.collection.Name + "?",
-						OnConfirm: DeleteCollectionMsg{Name: selected.collection.Name},
+						OnConfirm: uimsg.DeleteCollectionMsg{Name: selected.collection.Name},
 					}
 				}
 			}
@@ -116,7 +119,7 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 		case "y": // Duplicate Request
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
-					return DuplicateRequestMsg{
+					return uimsg.DuplicateRequestMsg{
 						CollectionName: selected.collection.Name,
 						RequestName:    selected.request.Name,
 					}
@@ -127,11 +130,11 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				oldName := selected.collection.Name
 				return m, func() tea.Msg {
-					return PromptForInputMsg{
+					return uimsg.PromptForInputMsg{
 						Title:       "Rename Collection: " + oldName,
 						Placeholder: "Enter new collection name",
 						OnCommit: func(val string) tea.Msg {
-							return RenameCollectionMsg{OldName: oldName, NewName: val}
+							return uimsg.RenameCollectionMsg{OldName: oldName, NewName: val}
 						},
 					}
 				}
@@ -166,12 +169,12 @@ func (i requestItem) Title() string {
 	if i.isCreate {
 		return "+ Create New Request"
 	}
-	return MethodBadge(i.request.Method) + " " + i.request.Name
+	return styles.MethodBadge(i.request.Method) + " " + i.request.Name
 }
 
 func (i requestItem) Description() string {
 	if i.isCreate {
 		return "Add a new request to your collection"
 	}
-	return DimStyle.Render(i.collection.Name)
+	return styles.DimStyle.Render(i.collection.Name)
 }

@@ -1,6 +1,7 @@
-package ui
+package components
 
 import (
+
 	"testing"
 
 	"time"

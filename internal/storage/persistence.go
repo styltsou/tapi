@@ -35,11 +35,12 @@ func EnsureDir(path string) error {
 }
 
 // LoadCollections loads all .yaml collection files from the collections directory
-func LoadCollections() ([]Collection, error) {
+// It returns successfully loaded collections and a list of errors for files that failed to load
+func LoadCollections() ([]Collection, []error, error) {
 	// Get path to collections directory
 	collectionsPath, err := GetStoragePath("collections")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Ensure directory exists
@@ -52,10 +53,11 @@ func LoadCollections() ([]Collection, error) {
 	pattern := filepath.Join(collectionsPath, "*.yaml")
 	files, err := filepath.Glob(pattern)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var collections []Collection
+	var loadErrors []error
 
 	// Iterate through files
 	for _, file := range files {
@@ -63,14 +65,16 @@ func LoadCollections() ([]Collection, error) {
 		data, err := os.ReadFile(file)
 		if err != nil {
 			logger.Logger.Error("Failed to read collection file", "file", file, "error", err)
-			continue // Skip this file and continue
+			loadErrors = append(loadErrors, fmt.Errorf("failed to read %s: %w", filepath.Base(file), err))
+			continue
 		}
 
 		// Unmarshal YAML
 		var collection Collection
 		if err := yaml.Unmarshal(data, &collection); err != nil {
 			logger.Logger.Error("Failed to parse collection file", "file", file, "error", err)
-			continue // Skip corrupt file
+			loadErrors = append(loadErrors, fmt.Errorf("failed to parse %s: %w", filepath.Base(file), err))
+			continue
 		}
 
 		// Derive collection name from filename
@@ -83,7 +87,7 @@ func LoadCollections() ([]Collection, error) {
 		logger.Logger.Info("Loaded collection", "name", collection.Name, "file", file)
 	}
 
-	return collections, nil
+	return collections, loadErrors, nil
 }
 
 // formatName converts a filename to a human-readable name

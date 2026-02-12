@@ -1,6 +1,7 @@
-package ui
+package components
 
 import (
+
 	"strings"
 	"testing"
 
@@ -165,7 +166,7 @@ func TestRequestModel_BuildRequest_WithAuth(t *testing.T) {
 		Auth: &storage.BasicAuth{Username: "admin", Password: "secret"},
 	}, "")
 
-	req, _ := m.buildRequest()
+	req, _ := m.BuildRequest()
 
 	if req.Auth == nil {
 		t.Fatal("Expected Auth in built request")
@@ -189,7 +190,7 @@ func TestRequestModel_BuildRequest_AuthDisabled(t *testing.T) {
 	// Now disable auth
 	m.authEnabled = false
 
-	req, _ := m.buildRequest()
+	req, _ := m.BuildRequest()
 
 	if req.Auth != nil {
 		t.Errorf("Expected nil Auth when disabled, got %+v", req.Auth)
@@ -203,7 +204,7 @@ func TestRequestModel_BuildRequest_NoAuth(t *testing.T) {
 		Name: "Plain Req", Method: "GET", URL: "/public",
 	}, "")
 
-	req, _ := m.buildRequest()
+	req, _ := m.BuildRequest()
 
 	if req.Auth != nil {
 		t.Errorf("Expected nil Auth for request without auth, got %+v", req.Auth)
@@ -223,7 +224,7 @@ func TestRequestModel_AuthToggle(t *testing.T) {
 	m.authUsername.SetValue("user")
 	m.authPassword.SetValue("pass")
 
-	req, _ := m.buildRequest()
+	req, _ := m.BuildRequest()
 	if req.Auth == nil {
 		t.Fatal("Expected Auth after enabling")
 	}
@@ -231,9 +232,9 @@ func TestRequestModel_AuthToggle(t *testing.T) {
 		t.Errorf("Auth credentials mismatch: got %+v", req.Auth)
 	}
 
-	// Toggle off — credentials remain in fields but buildRequest excludes them
+	// Toggle off — credentials remain in fields but BuildRequest excludes them
 	m.authEnabled = false
-	req2, _ := m.buildRequest()
+	req2, _ := m.BuildRequest()
 	if req2.Auth != nil {
 		t.Error("Expected nil Auth after disabling")
 	}

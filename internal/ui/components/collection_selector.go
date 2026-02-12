@@ -1,6 +1,9 @@
-package ui
+package components
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -10,9 +13,9 @@ import (
 
 // CollectionSelectorModel handles the collection selection modal
 type CollectionSelectorModel struct {
-	width       int
-	height      int
-	visible     bool
+	Width       int
+	Height      int
+	Visible     bool
 	collections []storage.Collection
 	list        list.Model
 }
@@ -22,18 +25,18 @@ func NewCollectionSelectorModel() CollectionSelectorModel {
 	l.Title = "Select Collection"
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
-	// Apply custom styles if needed, but ModalStyle will wrap it
-	l.Styles.Title = TitleStyle
+	// Apply custom styles if needed, but styles.ModalStyle will wrap it
+	l.Styles.Title = styles.TitleStyle
 	
 	return CollectionSelectorModel{
 		list:    l,
-		visible: true, // Start visible as per plan
+		Visible: true, // Start Visible as per plan
 	}
 }
 
 func (m *CollectionSelectorModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 	// Modal size
 	m.list.SetSize(width/2, height/2)
 }
@@ -50,12 +53,12 @@ func (m *CollectionSelectorModel) SetCollections(collections []storage.Collectio
 
 func (m CollectionSelectorModel) Update(msg tea.Msg) (CollectionSelectorModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case CollectionsLoadedMsg:
+	case uimsg.CollectionsLoadedMsg:
 		m.SetCollections(msg.Collections)
 		return m, nil
 
 	case tea.KeyMsg:
-		if !m.visible {
+		if !m.Visible {
 			return m, nil
 		}
 
@@ -69,14 +72,14 @@ func (m CollectionSelectorModel) Update(msg tea.Msg) (CollectionSelectorModel, t
 			// But generall esc usually closes modals. 
 			// If there is no active collection, we might want to enforce selection.
 			// For now, let's treat it as hide.
-			m.visible = false
+			m.Visible = false
 			return m, nil
 
 		case "enter":
 			if selected, ok := m.list.SelectedItem().(collectionItem); ok {
-				m.visible = false
+				m.Visible = false
 				return m, func() tea.Msg {
-					return CollectionSelectedMsg{Collection: selected.collection}
+					return uimsg.CollectionSelectedMsg{Collection: selected.collection}
 				}
 			}
 		}
@@ -88,10 +91,10 @@ func (m CollectionSelectorModel) Update(msg tea.Msg) (CollectionSelectorModel, t
 }
 
 func (m CollectionSelectorModel) View() string {
-	if !m.visible {
+	if !m.Visible {
 		return ""
 	}
-	return ModalStyle.Render(m.list.View())
+	return styles.ModalStyle.Render(m.list.View())
 }
 
 // collectionItem implements list.Item

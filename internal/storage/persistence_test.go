@@ -64,7 +64,7 @@ func TestPersistence(t *testing.T) {
 	}
 
 	// Test Load
-	cols, err := LoadCollections()
+	cols, _, err := LoadCollections()
 	if err != nil {
 		t.Fatalf("LoadCollections failed: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestPersistence_BasicAuth(t *testing.T) {
 	}
 
 	// Load it back
-	cols, err := LoadCollections()
+	cols, _, err := LoadCollections()
 	if err != nil {
 		t.Fatalf("LoadCollections failed: %v", err)
 	}

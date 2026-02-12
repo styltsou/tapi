@@ -36,7 +36,7 @@ func main() {
 	}
 
 	// First-run experience: create demo collection if none exist
-	collections, err := storage.LoadCollections()
+	collections, _, err := storage.LoadCollections()
 	if err == nil && len(collections) == 0 {
 		logger.Logger.Info("First run detected, creating demo collection")
 		demo := storage.Collection{

@@ -1,6 +1,9 @@
-package ui
+package components
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -8,9 +11,9 @@ import (
 // CommandMenuModel handles the spotlight-like searchable command menu
 type CommandMenuModel struct {
 	list    list.Model
-	visible bool
-	width   int
-	height  int
+	Visible bool
+	Width   int
+	Height  int
 }
 
 type commandItem struct {
@@ -27,33 +30,33 @@ type OpenCollectionSelectorMsg struct{}
 
 func NewCommandMenuModel() CommandMenuModel {
 	items := []list.Item{
-		commandItem{title: "Toggle Sidebar", desc: "Show/Hide the collection sidebar", action: ToggleSidebarMsg{}},
+		commandItem{title: "Toggle Sidebar", desc: "Show/Hide the collection sidebar", action: uimsg.ToggleSidebarMsg{}},
 		commandItem{title: "Change Collection", desc: "Switch to a different collection", action: OpenCollectionSelectorMsg{}},
-		commandItem{title: "Import Collection", desc: "Import from Postman, Insomnia, or cURL", action: PromptForInputMsg{
+		commandItem{title: "Import Collection", desc: "Import from Postman, Insomnia, or cURL", action: uimsg.PromptForInputMsg{
 			Title:       "Import Collection",
 			Placeholder: "Path to file (Postman JSON, Insomnia JSON, or cURL)",
-			OnCommit:    func(val string) tea.Msg { return ImportCollectionMsg{Path: val} },
+			OnCommit:    func(val string) tea.Msg { return uimsg.ImportCollectionMsg{Path: val} },
 		}},
-		commandItem{title: "Export Collection", desc: "Export current collection as YAML", action: PromptForInputMsg{
+		commandItem{title: "Export Collection", desc: "Export current collection as YAML", action: uimsg.PromptForInputMsg{
 			Title:       "Export Collection",
 			Placeholder: "Destination path (e.g. ~/my-collection.yaml)",
-			OnCommit:    func(val string) tea.Msg { return ExportCollectionMsg{DestPath: val} },
+			OnCommit:    func(val string) tea.Msg { return uimsg.ExportCollectionMsg{DestPath: val} },
 		}},
-		commandItem{title: "Environments", desc: "Manage environment variables", action: FocusMsg{Target: ViewEnvironments}},
-		commandItem{title: "Copy as cURL", desc: "Copy current request as a cURL command", action: CopyAsCurlMsg{}},
+		commandItem{title: "Environments", desc: "Manage environment variables", action: uimsg.FocusMsg{Target: uimsg.ViewEnvironments}},
+		commandItem{title: "Copy as cURL", desc: "Copy current request as a cURL command", action: uimsg.CopyAsCurlMsg{}},
 		commandItem{title: "Quit", desc: "Exit the application", action: tea.Quit()},
 	}
 
 	d := list.NewDefaultDelegate()
-	d.Styles.SelectedTitle = SelectedStyle
-	d.Styles.SelectedDesc = SelectedStyle.Copy().Foreground(Gray)
+	d.Styles.SelectedTitle = styles.SelectedStyle
+	d.Styles.SelectedDesc = styles.SelectedStyle.Copy().Foreground(styles.Gray)
 
 	l := list.New(items, d, 0, 0)
 	l.Title = "Commands"
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
-	l.Styles.Title = TitleStyle
+	l.Styles.Title = styles.TitleStyle
 
 	return CommandMenuModel{
 		list: l,
@@ -61,8 +64,8 @@ func NewCommandMenuModel() CommandMenuModel {
 }
 
 func (m *CommandMenuModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 	// Constrain menu to reasonable size
 	menuWidth := min(50, width-4)
 	menuHeight := min(14, height/2)
@@ -74,11 +77,11 @@ func (m CommandMenuModel) Update(msg tea.Msg) (CommandMenuModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
-			m.visible = false
+			m.Visible = false
 			return m, nil
 		case "enter":
 			if selected, ok := m.list.SelectedItem().(commandItem); ok {
-				m.visible = false
+				m.Visible = false
 				return m, func() tea.Msg {
 					return selected.action
 				}
@@ -92,9 +95,9 @@ func (m CommandMenuModel) Update(msg tea.Msg) (CommandMenuModel, tea.Cmd) {
 }
 
 func (m CommandMenuModel) View() string {
-	if !m.visible {
+	if !m.Visible {
 		return ""
 	}
 
-	return ModalStyle.Render(m.list.View())
+	return styles.ModalStyle.Render(m.list.View())
 }

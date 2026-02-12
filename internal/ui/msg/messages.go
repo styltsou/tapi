@@ -1,5 +1,5 @@
 // Package ui
-package ui
+package msg
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
@@ -161,6 +161,7 @@ type CollectionSelectedMsg struct {
 // CollectionsLoadedMsg is sent when collections are finished loading from storage
 type CollectionsLoadedMsg struct {
 	Collections []storage.Collection
+	LoadErrors  []error
 }
 
 // RequestSelectedMsg is sent when a request is selected from a collection

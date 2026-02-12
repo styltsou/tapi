@@ -1,6 +1,9 @@
 package ui
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"fmt"
 	"os"
 	"testing"
@@ -17,11 +20,11 @@ func TestMain(m *testing.M) {
 func TestNewModel(t *testing.T) {
 	m := NewModel(config.DefaultConfig())
 
-	if m.state != ViewWelcome {
-		t.Errorf("Expected initial state ViewWelcome, got %v", m.state)
+	if m.state != uimsg.ViewWelcome {
+		t.Errorf("Expected initial state uimsg.ViewWelcome, got %v", m.state)
 	}
 
-	if m.env.visible {
+	if m.env.Visible {
 		t.Error("Expected environment modal to be hidden initially")
 	}
 }
@@ -29,24 +32,24 @@ func TestNewModel(t *testing.T) {
 func TestModel_Update_Navigation(t *testing.T) {
 	m := NewModel(config.DefaultConfig())
 
-	// Test FocusMsg
-	m2, _ := m.Update(FocusMsg{Target: ViewRequestBuilder})
+	// Test uimsg.FocusMsg
+	m2, _ := m.Update(uimsg.FocusMsg{Target: uimsg.ViewRequestBuilder})
 	m = m2.(Model)
-	if m.state != ViewRequestBuilder {
-		t.Errorf("Expected state ViewRequestBuilder after FocusMsg, got %v", m.state)
+	if m.state != uimsg.ViewRequestBuilder {
+		t.Errorf("Expected state uimsg.ViewRequestBuilder after uimsg.FocusMsg, got %v", m.state)
 	}
 
-	// Test BackMsg
-	m3, _ := m.Update(BackMsg{})
+	// Test uimsg.BackMsg
+	m3, _ := m.Update(uimsg.BackMsg{})
 	m = m3.(Model)
-	if m.state != ViewWelcome {
-		t.Errorf("Expected state ViewWelcome after BackMsg (no collection), got %v", m.state)
+	if m.state != uimsg.ViewWelcome {
+		t.Errorf("Expected state uimsg.ViewWelcome after uimsg.BackMsg (no collection), got %v", m.state)
 	}
 }
 
 func TestModel_Update_EnvToggle(t *testing.T) {
 	m := NewModel(config.DefaultConfig())
-	if m.env.visible {
+	if m.env.Visible {
 		t.Fatal("Env should be hidden")
 	}
 }
@@ -79,10 +82,10 @@ func TestExpandTilde(t *testing.T) {
 
 func TestErrMsg_SurfacesToStatusBar(t *testing.T) {
 	m := NewModel(config.DefaultConfig())
-	m.width = 200
-	m.height = 40
+	m.Width = 200
+	m.Height = 40
 	
-	errMsg := ErrMsg{Err: fmt.Errorf("test error")}
+	errMsg := uimsg.ErrMsg{Err: fmt.Errorf("test error")}
 	m2, cmd := m.Update(errMsg)
 	m = m2.(Model)
 	
@@ -90,11 +93,11 @@ func TestErrMsg_SurfacesToStatusBar(t *testing.T) {
 		t.Fatal("Expected a command to show status, got nil")
 	}
 	
-	// Execute the command to get the StatusMsg
+	// Execute the command to get the uimsg.StatusMsg
 	msg := cmd()
-	statusMsg, ok := msg.(StatusMsg)
+	statusMsg, ok := msg.(uimsg.StatusMsg)
 	if !ok {
-		t.Fatalf("Expected StatusMsg, got %T", msg)
+		t.Fatalf("Expected uimsg.StatusMsg, got %T", msg)
 	}
 	if !statusMsg.IsError {
 		t.Error("Expected status to be an error")
@@ -108,7 +111,7 @@ func TestErrMsg_SurfacesToStatusBar(t *testing.T) {
 
 func TestMethodBadge_HEAD(t *testing.T) {
 	// Just verify it doesn't panic and produces non-empty output
-	badge := MethodBadge("HEAD")
+	badge := styles.MethodBadge("HEAD")
 	if badge == "" {
 		t.Error("Expected non-empty badge for HEAD")
 	}

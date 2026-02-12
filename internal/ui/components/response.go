@@ -1,13 +1,16 @@
 // internal/ui/response_model.go
-package ui
+package components
 
 import (
+	"github.com/styltsou/tapi/internal/ui/commands"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"fmt"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
+	chromaStyles "github.com/alecthomas/chroma/v2/styles"
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -19,8 +22,8 @@ import (
 
 // ResponseModel handles the response viewer
 type ResponseModel struct {
-	width    int
-	height   int
+	Width    int
+	Height   int
 	loading  bool
 	response *http.ProcessedResponse
 	request  storage.Request
@@ -28,7 +31,7 @@ type ResponseModel struct {
 
 	// Search state
 	searchInput   textinput.Model
-	searching     bool          // search bar is visible and focused
+	searching     bool          // search bar is Visible and focused
 	searchActive  bool          // matches are highlighted (bar may be dismissed)
 	searchQuery   string        // current search query
 	matches       []SearchMatch // all match positions
@@ -56,8 +59,8 @@ func NewResponseModel() ResponseModel {
 }
 
 func (m *ResponseModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 	m.viewport.Width = width - 4
 	m.viewport.Height = height - 10
 }
@@ -234,39 +237,39 @@ func (m *ResponseModel) countHeaderLines() int {
 
 func (m *ResponseModel) formatResponse() string {
 	if m.response == nil {
-		return DimStyle.Render("No response yet. Execute a request to see results.")
+		return styles.DimStyle.Render("No response yet. Execute a request to see results.")
 	}
 
 	var sb strings.Builder
 
 	// Status line
-	statusColor := SecondaryColor
+	statusColor := styles.SecondaryColor
 	if m.response.StatusCode >= 400 {
-		statusColor = ErrorColor
+		statusColor = styles.ErrorColor
 	}
-	statusStyle := lipgloss.NewStyle().Foreground(White).Background(statusColor).Bold(true).Padding(0, 1)
+	statusStyle := lipgloss.NewStyle().Foreground(styles.White).Background(statusColor).Bold(true).Padding(0, 1)
 
 	sb.WriteString(statusStyle.Render(m.response.Status))
 	sb.WriteString("  ")
-	sb.WriteString(DimStyle.Render(fmt.Sprintf("%v  %s", m.response.Duration, m.response.FormatSize())))
+	sb.WriteString(styles.DimStyle.Render(fmt.Sprintf("%v  %s", m.response.Duration, m.response.FormatSize())))
 	sb.WriteString("\n\n")
 
 	if m.response.Truncated {
-		sb.WriteString(ErrorStatusStyle.Render("⚠️  Response truncated (>10MB)") + "\n\n")
+		sb.WriteString(styles.ErrorStatusStyle.Render("⚠️  Response truncated (>10MB)") + "\n\n")
 	}
 
 	// Headers
-	sb.WriteString(HeaderStyle.Render("HEADERS"))
+	sb.WriteString(styles.HeaderStyle.Render("HEADERS"))
 	sb.WriteString("\n")
 	for key, values := range m.response.Headers {
 		for _, value := range values {
-			sb.WriteString(DimStyle.Render(key+": ") + value + "\n")
+			sb.WriteString(styles.DimStyle.Render(key+": ") + value + "\n")
 		}
 	}
 	sb.WriteString("\n")
 
 	// Body
-	sb.WriteString(HeaderStyle.Render("BODY"))
+	sb.WriteString(styles.HeaderStyle.Render("BODY"))
 	sb.WriteString("\n")
 
 	body := m.response.BodyString()
@@ -295,9 +298,9 @@ func highlight(content string, contentType string) string {
 		lexer = lexers.Fallback
 	}
 
-	style := styles.Get("monokai")
+	style := chromaStyles.Get("monokai")
 	if style == nil {
-		style = styles.Fallback
+		style = chromaStyles.Fallback
 	}
 
 	formatter := formatters.TTY256
@@ -387,9 +390,9 @@ func (m ResponseModel) Update(msg tea.Msg) (ResponseModel, tea.Cmd) {
 			if m.response != nil {
 				err := clipboard.WriteAll(m.response.BodyString())
 				if err != nil {
-					return m, showStatusCmd("Failed to copy body", true)
+					return m, commands.ShowStatusCmd("Failed to copy body", true)
 				}
-				return m, showStatusCmd("Body copied to clipboard", false)
+				return m, commands.ShowStatusCmd("Body copied to clipboard", false)
 			}
 		}
 	}
@@ -401,11 +404,11 @@ func (m ResponseModel) Update(msg tea.Msg) (ResponseModel, tea.Cmd) {
 
 func (m ResponseModel) View() string {
 	if m.loading {
-		return DimStyle.Render("Loading...\n\nExecuting request...")
+		return styles.DimStyle.Render("Loading...\n\nExecuting request...")
 	}
 
 	if m.response == nil {
-		return DimStyle.Render("No response yet.\nExecute a request to see the response.")
+		return styles.DimStyle.Render("No response yet.\nExecute a request to see the response.")
 	}
 
 	var view strings.Builder
@@ -414,23 +417,23 @@ func (m ResponseModel) View() string {
 	if m.searching || m.searchActive {
 		searchBar := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(SecondaryColor).
+			BorderForeground(styles.SecondaryColor).
 			Padding(0, 1).
-			Width(m.width - 6)
+			Width(m.Width - 6)
 
 		var barContent string
 		if m.searching {
 			barContent = "🔍 " + m.searchInput.View()
 		} else {
-			barContent = DimStyle.Render("🔍 " + m.searchQuery)
+			barContent = styles.DimStyle.Render("🔍 " + m.searchQuery)
 		}
 
 		// Match counter
 		if m.searchActive && len(m.matches) > 0 {
 			counter := fmt.Sprintf("  %d/%d", m.currentMatch+1, len(m.matches))
-			barContent += DimStyle.Render(counter)
+			barContent += styles.DimStyle.Render(counter)
 		} else if m.searchActive && m.searchQuery != "" {
-			barContent += ErrorStatusStyle.Render("  No matches")
+			barContent += styles.ErrorStatusStyle.Render("  No matches")
 		}
 
 		view.WriteString(searchBar.Render(barContent))

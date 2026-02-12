@@ -1,5 +1,5 @@
 // internal/ui/keymap.go
-package ui
+package keys
 
 import "github.com/charmbracelet/bubbles/key"
 

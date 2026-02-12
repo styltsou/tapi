@@ -1,7 +1,9 @@
 // internal/ui/help_model.go
-package ui
+package components
 
 import (
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,9 +12,9 @@ import (
 
 // HelpOverlayModel displays a full-screen keybinding cheatsheet
 type HelpOverlayModel struct {
-	visible bool
-	width   int
-	height  int
+	Visible bool
+	Width   int
+	Height  int
 }
 
 // helpCategory groups related keybindings
@@ -31,12 +33,12 @@ func NewHelpOverlayModel() HelpOverlayModel {
 }
 
 func (m *HelpOverlayModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 }
 
 func (m *HelpOverlayModel) Toggle() {
-	m.visible = !m.visible
+	m.Visible = !m.Visible
 }
 
 func (m HelpOverlayModel) Update(msg tea.Msg) (HelpOverlayModel, tea.Cmd) {
@@ -44,7 +46,7 @@ func (m HelpOverlayModel) Update(msg tea.Msg) (HelpOverlayModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "?", "esc", "q":
-			m.visible = false
+			m.Visible = false
 			return m, nil
 		}
 	}
@@ -109,7 +111,7 @@ func getHelpCategories() []helpCategory {
 }
 
 func (m HelpOverlayModel) View() string {
-	if !m.visible {
+	if !m.Visible {
 		return ""
 	}
 
@@ -155,13 +157,13 @@ func (m HelpOverlayModel) View() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(Gray).Render("Press ? or ESC to close"))
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.Gray).Render("Press ? or ESC to close"))
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#7D56F4")).
 		Padding(1, 3).
-		Width(min(50, m.width-4)).
+		Width(min(50, m.Width-4)).
 		Background(lipgloss.Color("#1a1b26"))
 
 	return boxStyle.Render(sb.String())

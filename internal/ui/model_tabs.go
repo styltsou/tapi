@@ -1,23 +1,14 @@
 package ui
 
 import (
-	"github.com/styltsou/tapi/internal/http"
-	"github.com/styltsou/tapi/internal/storage"
+	"github.com/styltsou/tapi/internal/ui/components"
 )
-
-// RequestTab represents an open request tab
-type RequestTab struct {
-	Request  storage.Request
-	BaseURL  string
-	Response *http.ProcessedResponse
-	Label    string // e.g. "GET /users"
-}
 
 // --- Tab Helper Methods ---
 
 func (m *Model) saveCurrentTab() {
 	if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
-		req, _ := m.request.buildRequest()
+		req, _ := m.request.BuildRequest()
 		m.tabs[m.activeTab].Request = req
 	}
 }
@@ -31,8 +22,8 @@ func (m *Model) loadActiveTab() {
 			m.response.SetResponse(tab.Response, tab.Request)
 			m.response.SetLoading(false)
 		} else {
-			w, h := m.response.width, m.response.height
-			m.response = NewResponseModel()
+			w, h := m.response.Width, m.response.Height
+			m.response = components.NewResponseModel()
 			m.response.SetSize(w, h)
 		}
 	}
@@ -54,10 +45,10 @@ func (m *Model) closeTab(index int) {
 
 	if len(m.tabs) == 0 {
 		m.activeTab = -1
-		rw, rh := m.request.width, m.request.height
-		respW, respH := m.response.width, m.response.height
-		m.request = NewRequestModel()
-		m.response = NewResponseModel()
+		rw, rh := m.request.Width, m.request.Height
+		respW, respH := m.response.Width, m.response.Height
+		m.request = components.NewRequestModel()
+		m.response = components.NewResponseModel()
 		m.request.SetSize(rw, rh)
 		m.response.SetSize(respW, respH)
 	} else {

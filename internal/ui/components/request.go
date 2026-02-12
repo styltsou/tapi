@@ -1,6 +1,9 @@
-package ui
+package components
 
 import (
+	uimsg "github.com/styltsou/tapi/internal/ui/msg"
+	"github.com/styltsou/tapi/internal/ui/styles"
+
 	"net/url"
 	"strings"
 
@@ -30,12 +33,12 @@ type KVInput struct {
 
 // RequestModel handles the request builder view
 type RequestModel struct {
-	width  int
-	height int
+	Width  int
+	Height int
 
 	// Current request being edited
 	request storage.Request
-	baseURL string
+	BaseURL string
 
 	// Static Fields
 	methods     []string
@@ -59,7 +62,7 @@ type RequestModel struct {
 	focusedIndex   int // index within a section's list (e.g., which header)
 	isKeyFocused   bool // true if key is focused, false if value is focused in KV sections
 	vars           map[string]string
-	preview        bool
+	Preview        bool
 	
 	// Autocomplete
 	suggestions SuggestionModel
@@ -113,14 +116,14 @@ func newEmptyKVInput() KVInput {
 }
 
 func (m *RequestModel) SetSize(width, height int) {
-	m.width = width
-	m.height = height
+	m.Width = width
+	m.Height = height
 	m.bodyInput.SetWidth(width - 4)
 }
 
 func (m *RequestModel) LoadRequest(req storage.Request, baseURL string) {
 	m.request = req
-	m.baseURL = baseURL
+	m.BaseURL = baseURL
 
 	for i, mthd := range m.methods {
 		if mthd == req.Method {
@@ -305,7 +308,7 @@ func (m RequestModel) Update(msg tea.Msg) (RequestModel, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	// 1. Handle Autocomplete
-	if m.suggestions.visible {
+	if m.suggestions.Visible {
 		newSugg, cmd := m.suggestions.Update(msg)
 		m.suggestions = newSugg
 		cmds = append(cmds, cmd)
@@ -373,7 +376,7 @@ func (m RequestModel) Update(msg tea.Msg) (RequestModel, tea.Cmd) {
 			}
 		}
 
-	case SuggestionSelectedMsg:
+	case uimsg.SuggestionSelectedMsg:
 		// Insert the selected variable at the end (simplification)
 		// Ideally insert at cursor, but we lack cursor access for now.
 		// We know we triggered on "{{", so we append "var_name}}".
@@ -508,7 +511,7 @@ func (m *RequestModel) checkForTrigger(text string) {
 	if strings.HasSuffix(text, "{{") {
 		m.suggestions.Show(m.vars, "", func(selected string) tea.Msg {
 			// Callback to insert
-			return SuggestionSelectedMsg{VarName: selected}
+			return uimsg.SuggestionSelectedMsg{VarName: selected}
 		}, nil)
 	}
 }
@@ -707,8 +710,8 @@ func (m *RequestModel) updateFocus() {
 	}
 }
 
-// buildRequest constructs the request and possibly a targeted URL (with substitutions)
-func (m *RequestModel) buildRequest() (storage.Request, string) {
+// BuildRequest constructs the request and possibly a targeted URL (with substitutions)
+func (m *RequestModel) BuildRequest() (storage.Request, string) {
 	req := storage.Request{
 		Name:    m.request.Name,
 		Method:  m.methods[m.methodIndex],
@@ -752,32 +755,32 @@ func (m RequestModel) View() string {
 	var sb strings.Builder
 
 	// Base URL context
-	if m.baseURL != "" {
-		sb.WriteString(DimStyle.Render("Base URL: "+m.baseURL) + "\n\n")
+	if m.BaseURL != "" {
+		sb.WriteString(styles.DimStyle.Render("Base URL: "+m.BaseURL) + "\n\n")
 	}
 
 	// Method & URL
 	method := m.methods[m.methodIndex]
 	var methodView string
 	if m.focusedSection == SectionURL && m.focusedIndex == 0 {
-		methodView = MethodBadge(method) + " "
+		methodView = styles.MethodBadge(method) + " "
 	} else {
 		// Dims the badge slightly if not focused? Or keep it bright
-		methodView = MethodBadge(method) + " " 
+		methodView = styles.MethodBadge(method) + " " 
 	}
 
 	urlStr := m.pathInput.Value()
 	// Highlight params in URL string for display would be cool
 	// For now, just render input
 	
-	if m.preview {
+	if m.Preview {
 		urlStr = m.highlightVars(urlStr)
 	}
 
 	urlView := m.pathInput.View()
 	if m.focusedSection == SectionURL && m.focusedIndex == 1 {
 		// Focused URL handled by textinput.View()
-	} else if m.preview {
+	} else if m.Preview {
 		urlView = urlStr // Already highlighted by highlightVars (which returns validated string with colors)
 	} else {
 		urlView = highlightPathParams(urlStr)
@@ -789,20 +792,20 @@ func (m RequestModel) View() string {
 
 	// Path Params
 	if len(m.pathParamsInputs) > 0 {
-		sb.WriteString(HeaderStyle.Render("PARAMS"))
+		sb.WriteString(styles.HeaderStyle.Render("PARAMS"))
 		sb.WriteString("\n")
 		sb.WriteString(m.renderKVSection(m.pathParamsInputs, SectionPathParams))
 		sb.WriteString("\n")
 	}
 
 	// Headers
-	sb.WriteString(HeaderStyle.Render("HEADERS"))
+	sb.WriteString(styles.HeaderStyle.Render("HEADERS"))
 	sb.WriteString("\n")
 	sb.WriteString(m.renderKVSection(m.headerInputs, SectionHeaders))
 	sb.WriteString("\n")
 
 	// Query Params
-	sb.WriteString(HeaderStyle.Render("QUERY PARAMS"))
+	sb.WriteString(styles.HeaderStyle.Render("QUERY PARAMS"))
 	sb.WriteString("\n")
 	sb.WriteString(m.renderKVSection(m.queryInputs, SectionQueryParams))
 	sb.WriteString("\n")
@@ -812,7 +815,7 @@ func (m RequestModel) View() string {
 	if m.authEnabled {
 		authLabel = "AUTH (Basic ✓)"
 	}
-	sb.WriteString(HeaderStyle.Render(authLabel))
+	sb.WriteString(styles.HeaderStyle.Render(authLabel))
 	sb.WriteString("\n")
 	if m.authEnabled {
 		userPrefix := "  "
@@ -824,32 +827,32 @@ func (m RequestModel) View() string {
 			passPrefix = "> "
 		}
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center,
-			SelectedStyle.Render(userPrefix),
-			DimStyle.Render("User: "),
+			styles.SelectedStyle.Render(userPrefix),
+			styles.DimStyle.Render("User: "),
 			m.authUsername.View(),
 		) + "\n")
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Center,
-			SelectedStyle.Render(passPrefix),
-			DimStyle.Render("Pass: "),
+			styles.SelectedStyle.Render(passPrefix),
+			styles.DimStyle.Render("Pass: "),
 			m.authPassword.View(),
 		) + "\n")
 	} else {
-		sb.WriteString(DimStyle.Render("  Disabled (Ctrl+B to enable)") + "\n")
+		sb.WriteString(styles.DimStyle.Render("  Disabled (Ctrl+B to enable)") + "\n")
 	}
 	sb.WriteString("\n")
 
 	// Body
-	sb.WriteString(HeaderStyle.Render("BODY"))
+	sb.WriteString(styles.HeaderStyle.Render("BODY"))
 	sb.WriteString("\n")
 	
 	bodyView := m.bodyInput.View()
-	if m.preview {
+	if m.Preview {
 		bodyView = m.highlightVars(m.bodyInput.Value())
 	}
 	sb.WriteString(bodyView)
 
 	// Render suggestions overlay if visible
-	if m.suggestions.visible {
+	if m.suggestions.Visible {
 		return lipgloss.JoinHorizontal(lipgloss.Top, sb.String(), m.suggestions.View())
 	}
 
@@ -858,7 +861,7 @@ func (m RequestModel) View() string {
 
 func (m RequestModel) renderKVSection(inputs []KVInput, section RequestSection) string {
 	if len(inputs) == 0 {
-		return DimStyle.Render("  (empty)") + "\n"
+		return styles.DimStyle.Render("  (empty)") + "\n"
 	}
 	
 	var sb strings.Builder
@@ -866,7 +869,7 @@ func (m RequestModel) renderKVSection(inputs []KVInput, section RequestSection) 
 		keyView := input.key.View()
 		valView := input.value.View()
 
-		if m.preview {
+		if m.Preview {
 			keyView = m.highlightVars(input.key.Value())
 			valView = m.highlightVars(input.value.Value())
 		}
@@ -878,9 +881,9 @@ func (m RequestModel) renderKVSection(inputs []KVInput, section RequestSection) 
 		}
 
 		row := lipgloss.JoinHorizontal(lipgloss.Center,
-			SelectedStyle.Render(prefix),
+			styles.SelectedStyle.Render(prefix),
 			keyView,
-			DimStyle.Render(" : "),
+			styles.DimStyle.Render(" : "),
 			valView,
 		)
 		sb.WriteString(row + "\n")
@@ -928,10 +931,10 @@ func (m RequestModel) highlightVars(text string) string {
 		var replacement string
 		if val, ok := m.vars[key]; ok {
 			// Found
-			replacement = lipgloss.NewStyle().Foreground(SecondaryColor).Bold(true).Render(val)
+			replacement = lipgloss.NewStyle().Foreground(styles.SecondaryColor).Bold(true).Render(val)
 		} else {
 			// Not Found
-			replacement = lipgloss.NewStyle().Foreground(ErrorColor).Bold(true).Render("{{" + key + "}}")
+			replacement = lipgloss.NewStyle().Foreground(styles.ErrorColor).Bold(true).Render("{{" + key + "}}")
 		}
 		
 		// Replace
@@ -954,7 +957,7 @@ func highlightPathParams(urlStr string) string {
 	parts := strings.Split(urlStr, "/")
 	for i, part := range parts {
 		if strings.HasPrefix(part, ":") && len(part) > 1 {
-			parts[i] = ParamStyle.Render(part)
+			parts[i] = styles.ParamStyle.Render(part)
 		}
 	}
 	return strings.Join(parts, "/")
