@@ -7,12 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/help"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/styltsou/tapi/internal/config"
 	"github.com/styltsou/tapi/internal/http"
 	"github.com/styltsou/tapi/internal/logger"
 	"github.com/styltsou/tapi/internal/storage"
+	"github.com/styltsou/tapi/internal/storage/exporter"
 	"github.com/styltsou/tapi/internal/storage/importer"
 )
 
@@ -38,6 +41,14 @@ const (
 	ModeInsert
 )
 
+// RequestTab represents an open request tab
+type RequestTab struct {
+	Request  storage.Request
+	BaseURL  string
+	Response *http.ProcessedResponse
+	Label    string // e.g. "GET /users"
+}
+
 // Model is the main application model that manages state and sub-models
 type Model struct {
 	state       ViewState
@@ -51,6 +62,7 @@ type Model struct {
 	input       InputModel
 	menu        CommandMenuModel
 	collectionSelector CollectionSelectorModel
+	helpOverlay HelpOverlayModel
 	help        help.Model
 	keys        KeyMap
 	width       int
@@ -61,9 +73,15 @@ type Model struct {
 	// Vim-style mode
 	mode         InputMode
 	leaderActive bool
+	gPending     bool // for gt/gT vim combos
+
+	// Request tabs
+	tabs      []RequestTab
+	activeTab int
 
 	// HTTP client
 	httpClient *http.Client
+	cfg        config.Config
 
 	// Current context
 	currentCollection *storage.Collection
@@ -75,12 +93,15 @@ type Model struct {
 }
 
 // NewModel creates a new main model with initial state
-func NewModel() Model {
+func NewModel(cfg config.Config) Model {
+	ApplyTheme(cfg.Theme)
+
 	return Model{
 		state:       ViewWelcome,
 		focusedPane: PaneCollections,
 		keys:        DefaultKeyMap(),
 		httpClient:  http.NewClient(),
+		cfg:         cfg,
 		sidebarVisible: true,
 		mode:         ModeNormal,
 
@@ -94,6 +115,7 @@ func NewModel() Model {
 		input:       NewInputModel("", "", nil, nil),
 		menu:        NewCommandMenuModel(),
 		collectionSelector: NewCollectionSelectorModel(),
+		helpOverlay: NewHelpOverlayModel(),
 		help:        help.New(),
 	}
 }
@@ -149,6 +171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.envEditor.SetSize(msg.Width, msg.Height)
 		m.menu.SetSize(msg.Width, msg.Height)
 		m.collectionSelector.SetSize(msg.Width, msg.Height)
+		m.helpOverlay.SetSize(msg.Width, msg.Height)
 
 		logger.Logger.Debug("Window resized", "width", msg.Width, "height", msg.Height)
 		return m, nil
@@ -161,6 +184,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Always allow Ctrl+C to quit
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
+		}
+
+		// If help overlay is open, route to it
+		if m.helpOverlay.visible {
+			newHelp, helpCmd := m.helpOverlay.Update(msg)
+			m.helpOverlay = newHelp
+			return m, helpCmd
 		}
 
 		// If a modal is open, route to it
@@ -216,6 +246,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.env.visible = false
 				m.collectionSelector.visible = false
 				return m, nil
+			case "y":
+				// Copy as cURL
+				req, targetedURL := m.request.buildRequest()
+				if targetedURL != "" {
+					req.URL = targetedURL
+				}
+				curlCmd := exporter.ExportCurl(req, m.request.baseURL)
+				err := clipboard.WriteAll(curlCmd)
+				if err != nil {
+					return m, showStatusCmd("Failed to copy cURL", true)
+				}
+				return m, showStatusCmd("cURL copied to clipboard", false)
+			case "w":
+				// Close current tab
+				if len(m.tabs) > 0 {
+					m.closeTab(m.activeTab)
+				}
+				return m, nil
 			case "q":
 				return m, tea.Quit
 			default:
@@ -229,7 +277,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case " ":
 				m.leaderActive = true
+				m.gPending = false
 				return m, nil
+			case "?":
+				m.helpOverlay.Toggle()
+				return m, nil
+			case "g":
+				if !m.gPending {
+					m.gPending = true
+					return m, nil
+				}
+				// gg — ignore double g
+				m.gPending = false
+				return m, nil
+			case "t":
+				if m.gPending {
+					// gt — next tab
+					m.gPending = false
+					if len(m.tabs) > 1 {
+						m.saveCurrentTab()
+						m.activeTab = (m.activeTab + 1) % len(m.tabs)
+						m.loadActiveTab()
+					}
+					return m, nil
+				}
+			case "T":
+				if m.gPending {
+					// gT — prev tab
+					m.gPending = false
+					if len(m.tabs) > 1 {
+						m.saveCurrentTab()
+						m.activeTab = (m.activeTab - 1 + len(m.tabs)) % len(m.tabs)
+						m.loadActiveTab()
+					}
+					return m, nil
+				}
 			case "i", "enter":
 				// Enter Insert mode
 				m.mode = ModeInsert
@@ -284,6 +366,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Route all other keys to focused sub-model for text editing
 		}
 	
+	case CopyAsCurlMsg:
+		req, targetedURL := m.request.buildRequest()
+		if targetedURL != "" {
+			req.URL = targetedURL
+		}
+		curlCmd := exporter.ExportCurl(req, m.request.baseURL)
+		err := clipboard.WriteAll(curlCmd)
+		if err != nil {
+			return m, showStatusCmd("Failed to copy cURL", true)
+		}
+		return m, showStatusCmd("cURL copied to clipboard", false)
+
 	case ToggleSidebarMsg:
 		m.sidebarVisible = !m.sidebarVisible
 		if m.sidebarVisible {
@@ -321,6 +415,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focusedPane = PaneResponse
 		m.response.SetLoading(true)
 		finalReq := m.applyCurrentEnv(msg.Request)
+		// Inject default headers from config (don't override request-specific headers)
+		for k, v := range m.cfg.DefaultHeaders {
+			if _, exists := finalReq.Headers[k]; !exists {
+				if finalReq.Headers == nil {
+					finalReq.Headers = make(map[string]string)
+				}
+				finalReq.Headers[k] = v
+			}
+		}
 		// If TargetedURL is present, we temporarily override the URL in the request
 		// or pass it explicitly.
 		if msg.TargetedURL != "" {
@@ -331,6 +434,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ResponseReadyMsg:
 		m.response.SetResponse(msg.Response, msg.Request)
 		m.response.SetLoading(false)
+		// Save response to current tab
+		if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
+			m.tabs[m.activeTab].Response = msg.Response
+		}
 		return m, nil
 
 	case CollectionSelectedMsg:
@@ -348,7 +455,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, selCmd
 
 	case RequestSelectedMsg:
+		// Check if this request is already open in a tab
+		for i, tab := range m.tabs {
+			if tab.Request.Name == msg.Request.Name && tab.BaseURL == msg.BaseURL {
+				// Switch to existing tab
+				m.saveCurrentTab()
+				m.activeTab = i
+				m.loadActiveTab()
+				m.focusedPane = PaneRequest
+				return m, nil
+			}
+		}
+		// Save current tab state before opening new one
+		m.saveCurrentTab()
+		// Open new tab
+		label := msg.Request.Method + " " + msg.Request.Name
+		if len(label) > 20 {
+			label = label[:20] + "…"
+		}
+		m.tabs = append(m.tabs, RequestTab{
+			Request:  msg.Request,
+			BaseURL:  msg.BaseURL,
+			Response: nil,
+			Label:    label,
+		})
+		m.activeTab = len(m.tabs) - 1
 		m.request.LoadRequest(msg.Request, msg.BaseURL)
+		// Clear response for new tab
+		m.response = NewResponseModel()
+		m.response.SetSize(m.response.width, m.response.height)
 		m.focusedPane = PaneRequest
 		return m, nil
 
@@ -579,6 +714,28 @@ func (m Model) View() string {
 	}
 	header += "\n"
 
+	// Tab Bar
+	var tabBar string
+	if len(m.tabs) > 0 {
+		var tabs []string
+		for i, tab := range m.tabs {
+			style := lipgloss.NewStyle().
+				Padding(0, 1).
+				Foreground(lipgloss.Color("#555555")).
+				Background(lipgloss.Color("#1a1b26"))
+			
+			if i == m.activeTab {
+				style = style.
+					Foreground(lipgloss.Color("#ffffff")).
+					Background(lipgloss.Color("#7D56F4")).
+					Bold(true)
+			}
+			tabs = append(tabs, style.Render(tab.Label))
+		}
+		tabBar = lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+		tabBar += "\n"
+	}
+
 	// 2. Dashboard Content
 	var sidebar, request, response string
 	
@@ -655,13 +812,16 @@ func (m Model) View() string {
 	// Final Assembly
 	fullView := lipgloss.JoinVertical(lipgloss.Left,
 		header,
+		tabBar,
 		dashboard,
 		bar,
 	)
 
 	// Modals (Overlays)
 	var overlay string
-	if m.menu.visible {
+	if m.helpOverlay.visible {
+		overlay = m.helpOverlay.View()
+	} else if m.menu.visible {
 		overlay = m.menu.View()
 	} else if m.env.visible {
 		overlay = m.env.View()
@@ -958,5 +1118,61 @@ func duplicateRequestCmd(collectionName, requestName string) tea.Cmd {
 			}
 		}
 		return ErrMsg{Err: fmt.Errorf("request not found")}
+	}
+}
+
+// --- Tab Helper Methods ---
+
+func (m *Model) saveCurrentTab() {
+	if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
+		req, _ := m.request.buildRequest()
+		m.tabs[m.activeTab].Request = req
+		// Response is already saved on ResponseReadyMsg, but we can ensure it here if needed
+		// m.tabs[m.activeTab].Response = m.response.GetResponse() // (if GetResponse existed)
+	}
+}
+
+func (m *Model) loadActiveTab() {
+	if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
+		tab := m.tabs[m.activeTab]
+		m.request.LoadRequest(tab.Request, tab.BaseURL)
+		
+		if tab.Response != nil {
+			m.response.SetResponse(tab.Response, tab.Request)
+			m.response.SetLoading(false)
+		} else {
+			// Clear response pane for new/empty tab
+			m.response = NewResponseModel()
+			m.response.SetSize(m.response.width, m.response.height)
+		}
+	}
+}
+
+func (m *Model) closeTab(index int) {
+	if index < 0 || index >= len(m.tabs) {
+		return
+	}
+
+	// Remove tab at index
+	m.tabs = append(m.tabs[:index], m.tabs[index+1:]...)
+
+	// Adjust active tab
+	if m.activeTab >= len(m.tabs) {
+		m.activeTab = len(m.tabs) - 1
+	}
+	if m.activeTab < 0 {
+		m.activeTab = 0
+	}
+
+	// If no tabs left, clear request/response or load welcome?
+	if len(m.tabs) == 0 {
+		m.activeTab = -1
+		// For now, let's keep the dashboard but maybe clear it
+		m.request = NewRequestModel()
+		m.response = NewResponseModel()
+		m.request.SetSize(m.request.width, m.request.height)
+		m.response.SetSize(m.response.width, m.response.height)
+	} else {
+		m.loadActiveTab()
 	}
 }

@@ -243,3 +243,6 @@ type DuplicateRequestMsg struct {
 
 // ClearStatusMsg clears the status bar text (used for auto-dismiss)
 type ClearStatusMsg struct{}
+
+// CopyAsCurlMsg triggers copying the current request as a cURL command
+type CopyAsCurlMsg struct{}

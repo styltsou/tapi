@@ -1,6 +1,25 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+	"github.com/styltsou/tapi/internal/config"
+)
+
+// ApplyTheme overrides the default color palette from config
+func ApplyTheme(theme config.ThemeConfig) {
+	if theme.Primary != "" {
+		PrimaryColor = lipgloss.Color(theme.Primary)
+	}
+	if theme.Secondary != "" {
+		SecondaryColor = lipgloss.Color(theme.Secondary)
+	}
+	if theme.Accent != "" {
+		AccentColor = lipgloss.Color(theme.Accent)
+	}
+	if theme.Error != "" {
+		ErrorColor = lipgloss.Color(theme.Error)
+	}
+}
 
 var (
 	// Colors

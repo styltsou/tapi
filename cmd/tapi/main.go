@@ -5,6 +5,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/styltsou/tapi/internal/config"
 	"github.com/styltsou/tapi/internal/logger"
 	"github.com/styltsou/tapi/internal/storage"
 	"github.com/styltsou/tapi/internal/ui"
@@ -18,6 +19,9 @@ func main() {
 	}
 
 	logger.Logger.Info("Starting TAPI " + Version)
+
+	// Load configuration
+	cfg := config.Load()
 
 	// Ensure collections directory exists
 	collectionsPath, err := storage.GetStoragePath("collections")
@@ -59,7 +63,7 @@ func main() {
 	}
 
 	// Create and run program
-	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen())
+	p := tea.NewProgram(ui.NewModel(cfg), tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
