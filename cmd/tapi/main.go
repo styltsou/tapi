@@ -59,7 +59,9 @@ func main() {
 				},
 			},
 		}
-		storage.SaveCollection(demo)
+		if err := storage.SaveCollection(demo); err != nil {
+			logger.Logger.Error("Failed to create demo collection", "error", err)
+		}
 	}
 
 	// Create and run program

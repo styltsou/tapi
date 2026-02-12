@@ -29,7 +29,7 @@ func deleteRequestCmd(collectionName, requestName string) tea.Cmd {
 				)
 			}
 		}
-		return nil
+		return ErrMsg{Err: fmt.Errorf("collection %q not found", collectionName)}
 	}
 }
 

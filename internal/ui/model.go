@@ -355,13 +355,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	
 	case CopyAsCurlMsg:
+		// Delegate to leader key handler logic
 		req, targetedURL := m.request.buildRequest()
 		if targetedURL != "" {
 			req.URL = targetedURL
 		}
 		curlCmd := exporter.ExportCurl(req, m.request.baseURL)
-		err := clipboard.WriteAll(curlCmd)
-		if err != nil {
+		if err := clipboard.WriteAll(curlCmd); err != nil {
 			return m, showStatusCmd("Failed to copy cURL", true)
 		}
 		return m, showStatusCmd("cURL copied to clipboard", false)
@@ -470,8 +470,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeTab = len(m.tabs) - 1
 		m.request.LoadRequest(msg.Request, msg.BaseURL)
 		// Clear response for new tab
+		w, h := m.response.width, m.response.height
 		m.response = NewResponseModel()
-		m.response.SetSize(m.response.width, m.response.height)
+		m.response.SetSize(w, h)
 		m.focusedPane = PaneRequest
 		return m, nil
 
@@ -619,12 +620,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.input.Init()
 
 	case SaveResponseBodyMsg:
-		m.state = ViewCollectionList // Or back to wherever we caused it? ViewResponse/Dashboard
-		// Actually if we were in ViewResponse (Dashboard), we stay in Dashboard but focus might be lost if state is ViewCollectionList.
-		// Wait, state ViewCollectionList is seemingly "Default Dashboard View". 
-		// Ideally we return to ViewResponse focus.
-		// Let's assume ViewCollectionList is the main "Dashboard" state (which is confusing naming, but let's stick to existing pattern).
-		// Re-reading code: m.state = ViewCollectionList seems to be the default state for "The Dashboard".
+		m.state = ViewCollectionList
 		
 		err := os.WriteFile(msg.Filename, msg.Body, 0644)
 		if err != nil {
@@ -685,14 +681,14 @@ func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Initializing..."
 	}
-    
-    // Check if terminal is too small
-    if m.tooSmall {
-        return lipgloss.Place(m.width, m.height,
-            lipgloss.Center, lipgloss.Center,
-            fmt.Sprintf("Terminal is too small.\nPlease resize to at least %dx%d.", minWidth, minHeight),
-        )
-    }
+
+	// Check if terminal is too small
+	if m.tooSmall {
+		return lipgloss.Place(m.width, m.height,
+			lipgloss.Center, lipgloss.Center,
+			fmt.Sprintf("Terminal is too small.\nPlease resize to at least %dx%d.", minWidth, minHeight),
+		)
+	}
 
 	// Welcome screen
 	if m.state == ViewWelcome {
