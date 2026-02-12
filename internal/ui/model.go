@@ -700,66 +700,13 @@ func (m Model) View() string {
 	}
 
 	// 1. Header
-	headerText := " TAPI "
-	if m.currentCollection != nil {
-		headerText += " • " + m.currentCollection.Name
-	}
-	header := TitleStyle.Render(headerText)
-	if m.currentEnv != nil {
-		header += " " + StatusStyle.Render("Env: "+m.currentEnv.Name)
-	}
-	header += "\n"
+	header := m.viewHeader()
 
 	// Tab Bar
-	var tabBar string
-	if len(m.tabs) > 0 {
-		var tabs []string
-		for i, tab := range m.tabs {
-			style := lipgloss.NewStyle().
-				Padding(0, 1).
-				Foreground(lipgloss.Color("#555555")).
-				Background(lipgloss.Color("#1a1b26"))
-			
-			if i == m.activeTab {
-				style = style.
-					Foreground(lipgloss.Color("#ffffff")).
-					Background(lipgloss.Color("#7D56F4")).
-					Bold(true)
-			}
-			tabs = append(tabs, style.Render(tab.Label))
-		}
-		tabBar = lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-		tabBar += "\n"
-	}
+	tabBar := m.viewTabBar()
 
 	// 2. Dashboard Content
-	var sidebar, request, response string
-	
-	sStyle, rStyle, respStyle := InactivePaneStyle, InactivePaneStyle, InactivePaneStyle
-	switch m.focusedPane {
-	case PaneCollections:
-		sStyle = ActivePaneStyle
-	case PaneRequest:
-		rStyle = ActivePaneStyle
-	case PaneResponse:
-		respStyle = ActivePaneStyle
-	}
-
-	if m.sidebarVisible {
-		sidebar = sStyle.Width(m.collections.width).Height(m.collections.height).Render(m.collections.View())
-	}
-	request = rStyle.Width(m.request.width).Height(m.request.height).Render(m.request.View())
-	response = respStyle.Width(m.response.width).Height(m.response.height).Render(m.response.View())
-
-	var dashboard string
-	if m.sidebarVisible {
-		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, request, response)
-	} else {
-		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, request, response)
-	}
-	
-	// Apply Main Layout padding
-	dashboard = MainLayoutStyle.Render(dashboard)
+	dashboard := m.viewDashboard()
 
 	// 3. Status Bar
 	logo := StatusBarLogoStyle.Render(" TAPI ")
@@ -996,6 +943,74 @@ func createRequestCmd(collectionName string, req storage.Request) tea.Cmd {
 			loadCollectionsCmd(),
 		)
 	}
+}
+
+// --- View Helper Methods ---
+
+func (m Model) viewHeader() string {
+	headerText := " TAPI "
+	if m.currentCollection != nil {
+		headerText += " • " + m.currentCollection.Name
+	}
+	header := TitleStyle.Render(headerText)
+	if m.currentEnv != nil {
+		header += " " + StatusStyle.Render("Env: "+m.currentEnv.Name)
+	}
+	header += "\n"
+	return header
+}
+
+func (m Model) viewTabBar() string {
+	var tabBar string
+	if len(m.tabs) > 0 {
+		var tabs []string
+		for i, tab := range m.tabs {
+			style := lipgloss.NewStyle().
+				Padding(0, 1).
+				Foreground(lipgloss.Color("#555555")).
+				Background(lipgloss.Color("#1a1b26"))
+			
+			if i == m.activeTab {
+				style = style.
+					Foreground(lipgloss.Color("#ffffff")).
+					Background(lipgloss.Color("#7D56F4")).
+					Bold(true)
+			}
+			tabs = append(tabs, style.Render(tab.Label))
+		}
+		tabBar = lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+		tabBar += "\n"
+	}
+	return tabBar
+}
+
+func (m Model) viewDashboard() string {
+	sStyle, rStyle, respStyle := InactivePaneStyle, InactivePaneStyle, InactivePaneStyle
+	switch m.focusedPane {
+	case PaneCollections:
+		sStyle = ActivePaneStyle
+	case PaneRequest:
+		rStyle = ActivePaneStyle
+	case PaneResponse:
+		respStyle = ActivePaneStyle
+	}
+
+	var sidebar string
+	if m.sidebarVisible {
+		sidebar = sStyle.Width(m.collections.width).Height(m.collections.height).Render(m.collections.View())
+	}
+	request := rStyle.Width(m.request.width).Height(m.request.height).Render(m.request.View())
+	response := respStyle.Width(m.response.width).Height(m.response.height).Render(m.response.View())
+
+	var dashboard string
+	if m.sidebarVisible {
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, request, response)
+	} else {
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, request, response)
+	}
+	
+	// Apply Main Layout padding
+	return MainLayoutStyle.Render(dashboard)
 }
 
 
