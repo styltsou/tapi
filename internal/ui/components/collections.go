@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/styltsou/tapi/internal/storage"
 )
 
@@ -20,8 +21,8 @@ type CollectionsModel struct {
 
 func NewCollectionsModel() CollectionsModel {
 	d := list.NewDefaultDelegate()
-	d.ShowDescription = true
-	d.SetHeight(2)
+	d.ShowDescription = false
+	d.SetHeight(1)
 	d.Styles.SelectedTitle = styles.SelectedStyle
 	d.Styles.SelectedDesc = styles.SelectedStyle.Copy().Foreground(styles.Gray)
 
@@ -32,15 +33,30 @@ func NewCollectionsModel() CollectionsModel {
 	l.SetFilteringEnabled(true)
 	l.Styles.Title = styles.TitleStyle
 
+	l.KeyMap.Quit.SetKeys() // Disable default quit keys (q, esc) to handle globally
+
 	return CollectionsModel{
 		list: l,
 	}
 }
 
+func (m CollectionsModel) IsFiltering() bool {
+	return m.list.FilterState() == list.Filtering
+}
+
 func (m *CollectionsModel) SetSize(width, height int) {
 	m.Width = width
 	m.Height = height
-	m.list.SetSize(width-4, height-4)
+	// Sidebar has a right border (1 char).
+	listWidth := width - 1
+
+	// Update title style to full width
+	m.list.Styles.Title = styles.TitleStyle.Copy().
+		Width(listWidth).
+		Align(lipgloss.Left).
+		Padding(0, 0)
+
+	m.list.SetSize(listWidth, height)
 }
 
 func (m *CollectionsModel) SetCollection(collection storage.Collection) {
@@ -173,8 +189,5 @@ func (i requestItem) Title() string {
 }
 
 func (i requestItem) Description() string {
-	if i.isCreate {
-		return "Add a new request to your collection"
-	}
-	return styles.DimStyle.Render(i.collection.Name)
+	return ""
 }

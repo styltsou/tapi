@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/styltsou/tapi/internal/storage"
 )
 
@@ -21,16 +22,21 @@ type CollectionSelectorModel struct {
 }
 
 func NewCollectionSelectorModel() CollectionSelectorModel {
-	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	d := list.NewDefaultDelegate()
+	d.Styles.SelectedTitle = styles.ModalSelectedStyle
+	d.Styles.SelectedDesc = styles.ModalSelectedStyle.Copy().Foreground(styles.Gray)
+	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy().Background(styles.DarkGray)
+	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Background(styles.DarkGray).Foreground(styles.Gray)
+
+	l := list.New([]list.Item{}, d, 0, 0)
 	l.Title = "Select Collection"
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
-	// Apply custom styles if needed, but styles.ModalStyle will wrap it
-	l.Styles.Title = styles.TitleStyle
+	l.Styles.Title = styles.TitleStyle.Copy().Background(styles.DarkGray).Foreground(styles.PrimaryColor)
 	
 	return CollectionSelectorModel{
 		list:    l,
-		Visible: true, // Start Visible as per plan
+		Visible: false,
 	}
 }
 
@@ -94,7 +100,13 @@ func (m CollectionSelectorModel) View() string {
 	if !m.Visible {
 		return ""
 	}
-	return styles.ModalStyle.Render(m.list.View())
+	
+	width := m.Width / 2
+	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	
+	content := styles.Solidify(m.list.View(), width, bgStyle)
+	
+	return styles.ModalStyle.Render(content)
 }
 
 // collectionItem implements list.Item

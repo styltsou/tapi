@@ -196,13 +196,14 @@ func (m *EnvEditorModel) updateFocus() {
 func (m EnvEditorModel) View() string {
 	var sb strings.Builder
 	
+	bg := styles.DarkGray
 	sb.WriteString(styles.TitleStyle.Render(" Editing: " + m.env.Name + " "))
 	sb.WriteString("\n\n")
 
 	// Header row
 	header := lipgloss.JoinHorizontal(lipgloss.Left,
-		styles.HeaderStyle.Width(24).Render("VARIABLE"),
-		styles.HeaderStyle.Width(44).Render("VALUE"),
+		styles.HeaderStyle.Copy().Background(bg).Width(24).Render("VARIABLE"),
+		styles.HeaderStyle.Copy().Background(bg).Width(44).Render("VALUE"),
 	)
 	sb.WriteString(header + "\n")
 
@@ -212,19 +213,26 @@ func (m EnvEditorModel) View() string {
 			prefix = "> "
 		}
 
+		// Ensure prefix and inputs have background
+		prefixStyle := styles.ModalSelectedStyle.Copy().Background(bg)
+		dimStyle := styles.DimStyle.Copy().Background(bg)
+
 		row := lipgloss.JoinHorizontal(lipgloss.Center,
-			styles.SelectedStyle.Render(prefix),
+			prefixStyle.Render(prefix),
 			input.key.View(),
-			styles.DimStyle.Render(" : "),
+			dimStyle.Render(" : "),
 			input.value.View(),
 		)
-		sb.WriteString(row + "\n")
+		sb.WriteString(lipgloss.NewStyle().Background(bg).Render(row) + "\n")
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(styles.FooterStyle.Render("Ctrl+S: Save | Esc: Cancel | Ctrl+A: Add Row | Ctrl+D: Delete Row"))
-
-	return styles.ModalStyle.Render(sb.String())
+	width := 72 // Variable(24) + Value(44) + " : "(3) + prefix(1) etc... let's be generous
+	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	
+	content := styles.Solidify(sb.String(), width, bgStyle)
+	
+	return styles.ModalStyle.Render(content)
 }
 
 type SaveEnvMsg struct {

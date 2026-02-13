@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -38,14 +39,20 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		
 		remainingWidth := max(0, m.Width-sidebarWidth)
-		requestWidth := remainingWidth / 2
-		responseWidth := max(0, remainingWidth-requestWidth)
 
-		contentHeight := max(0, msg.Height-4) // header(1) + status(1) + help(1) + spacing(1)
+		// Stacked Layout: Request Top, Response Bottom
+		// We give 50% height to each (minus header/status space)
+		contentHeight := max(0, msg.Height-3) // header(1) + status(1) + tabs(1)
+		
+		requestHeight := contentHeight / 2
+		responseHeight := max(0, contentHeight - requestHeight)
+		
 
+		// Both take full remaining width
+		// We subtract 1 to account for the manual header we add in View()
+		m.request.SetSize(remainingWidth, requestHeight-1)
+		m.response.SetSize(remainingWidth, responseHeight-1)
 		m.collections.SetSize(sidebarWidth, contentHeight)
-		m.request.SetSize(requestWidth, contentHeight)
-		m.response.SetSize(responseWidth, contentHeight)
 		m.welcome.SetSize(msg.Width, msg.Height)
 		
 		m.env.SetSize(msg.Width, msg.Height)
@@ -107,6 +114,10 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		m.focusedPane = PaneCollections
 		return m, nil, true
 
+	case uimsg.OpenCollectionSelectorMsg:
+		m.collectionSelector.Visible = true
+		return m, nil, true
+
 	case uimsg.ExecuteRequestMsg:
 		m.focusedPane = PaneResponse
 		m.response.SetLoading(true)
@@ -138,9 +149,10 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 
 	case uimsg.CollectionSelectedMsg:
 		m.state = uimsg.ViewCollectionList
-		m.currentCollection = &msg.Collection
+		col := msg.Collection
+		m.currentCollection = &col
 		m.collections.SetCollection(msg.Collection)
-		m.focusedPane = PaneRequest
+		m.focusedPane = PaneCollections
 		newM, cmd := m.Update(tea.WindowSizeMsg{Width: m.Width, Height: m.Height}) 
 		return newM.(Model), cmd, true
 
@@ -151,6 +163,26 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 			m.statusText = fmt.Sprintf("Warning: %d collection(s) failed to load", len(m.loadErrors))
 			m.statusIsErr = true
 		}
+		
+		// Refresh current collection if active
+		if m.currentCollection != nil {
+			found := false
+			for i := range msg.Collections {
+				if msg.Collections[i].Name == m.currentCollection.Name {
+					m.currentCollection = &msg.Collections[i]
+					m.collections.SetCollection(msg.Collections[i])
+					found = true
+					break
+				}
+			}
+			// If current collection was deleted, go back to welcome/list
+			if !found {
+				m.currentCollection = nil
+				m.state = uimsg.ViewWelcome
+				m.focusedPane = PaneCollections
+			}
+		}
+
 		// Also forward to collectionSelector
 		newSelector, selCmd := m.collectionSelector.Update(msg)
 		m.collectionSelector = newSelector
@@ -218,6 +250,9 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		return m, m.input.Init(), true
 
 	case uimsg.CreateRequestMsg:
+		if strings.TrimSpace(msg.Name) == "" {
+			return m, commands.ShowStatusCmd("Request name cannot be empty", true), true
+		}
 		targetCol := "My Collection"
 		if m.currentCollection != nil {
 			targetCol = m.currentCollection.Name
@@ -229,15 +264,105 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 			URL:     "https://httpbin.org/get",
 			Headers: make(map[string]string),
 		}
+		// Close input modal and trigger creation
+		m.state = uimsg.ViewCollectionList
 		return m, commands.CreateRequestCmd(targetCol, newReq), true
+	case uimsg.RequestCreatedMsg:
+		return m, tea.Batch(
+			commands.ShowStatusCmd("Request created", false),
+			commands.LoadCollectionsCmd(),
+		), true
 
 	case uimsg.DeleteRequestMsg:
 		return m, commands.DeleteRequestCmd(msg.CollectionName, msg.RequestName), true
 
+	case uimsg.RequestDeletedMsg:
+		// Close modal if open (implicitly handled by state change)
+		if m.state == uimsg.ViewInput {
+			m.state = uimsg.ViewCollectionList
+		}
+		
+		// Reactive update: Remove request from current collection
+		if m.currentCollection != nil && m.currentCollection.Name == msg.CollectionName {
+			newReqs := []storage.Request{}
+			for _, req := range m.currentCollection.Requests {
+				if req.Name != msg.RequestName {
+					newReqs = append(newReqs, req)
+				}
+			}
+			m.currentCollection.Requests = newReqs
+			m.collections.SetCollection(*m.currentCollection)
+		}
+		
+		// Remove from tabs if open
+		newTabs := []components.RequestTab{}
+		activeTabClosed := false
+		for i, tab := range m.tabs {
+			// Check if this tab matches the deleted request
+			// We might need collection name in tab to be 100% sure, but request name + baseurl is good enough for now
+			// If we had collection name in tab, it would be safer. 
+			// For now, let's just match by name.
+			if tab.Request.Name == msg.RequestName {
+				if i == m.activeTab {
+					activeTabClosed = true
+				}
+				continue
+			}
+			newTabs = append(newTabs, tab)
+		}
+		m.tabs = newTabs
+		
+		// Adjust active tab
+		if activeTabClosed {
+			if len(m.tabs) > 0 {
+				m.activeTab = max(0, min(m.activeTab, len(m.tabs)-1))
+				m.loadActiveTab()
+			} else {
+				m.activeTab = -1
+				// Clear request view
+				m.request.Clear()
+				m.response.Clear()
+				// Show empty state or something? 
+				// For now just clear it.
+			}
+		} else if m.activeTab >= len(m.tabs) {
+			m.activeTab = len(m.tabs) - 1
+		}
+		
+		// If the currently viewed request (not via tab) was deleted
+		if m.activeTab == -1 && m.request.GetRequestName() == msg.RequestName {
+			m.request.Clear()
+			m.response.Clear()
+		}
+
+		return m, nil, true
+
 	case uimsg.DeleteCollectionMsg:
 		return m, commands.DeleteCollectionCmd(msg.Name), true
 
+	case uimsg.CollectionDeletedMsg:
+		if m.currentCollection != nil && m.currentCollection.Name == msg.Name {
+			m.currentCollection = nil
+			m.state = uimsg.ViewWelcome
+		}
+		return m, tea.Batch(
+			commands.ShowStatusCmd("Collection deleted", false),
+			commands.LoadCollectionsCmd(),
+		), true
+
+	case uimsg.CollectionRenamedMsg:
+		if m.currentCollection != nil && m.currentCollection.Name == msg.OldName {
+			m.currentCollection.Name = msg.NewName
+		}
+		return m, tea.Batch(
+			commands.ShowStatusCmd("Collection renamed", false),
+			commands.LoadCollectionsCmd(),
+		), true
+
 	case uimsg.CreateCollectionMsg:
+		if strings.TrimSpace(msg.Name) == "" {
+			return m, commands.ShowStatusCmd("Collection name cannot be empty", true), true
+		}
 		col := storage.Collection{Name: msg.Name, Requests: []storage.Request{}}
 		if err := storage.SaveCollection(col); err != nil {
 			m.statusText = "Error: " + err.Error()
@@ -250,6 +375,7 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		}, true
 
 	case uimsg.RenameCollectionMsg:
+		m.state = uimsg.ViewCollectionList
 		return m, commands.RenameCollectionCmd(msg.OldName, msg.NewName), true
 
 	case uimsg.EnvChangedMsg:
@@ -260,6 +386,22 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 	case uimsg.StatusMsg:
 		m.statusText = msg.Message
 		m.statusIsErr = msg.IsError
+
+		if msg.IsError {
+			m.nextNotificationID++
+			notif := Notification{
+				ID:      m.nextNotificationID,
+				Message: msg.Message,
+				IsError: true,
+			}
+			m.notifications = append(m.notifications, notif)
+
+			// Clear notification after 5 seconds
+			return m, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+				return uimsg.ClearNotificationMsg{ID: notif.ID}
+			}), true
+		}
+
 		// Auto-dismiss status after 3 seconds
 		return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
 			return uimsg.ClearStatusMsg{}
@@ -270,7 +412,20 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		m.statusIsErr = false
 		return m, nil, true
 
+	case uimsg.ClearNotificationMsg:
+		newNotifications := []Notification{}
+		for _, n := range m.notifications {
+			if n.ID != msg.ID {
+				newNotifications = append(newNotifications, n)
+			}
+		}
+		m.notifications = newNotifications
+		return m, nil, true
+
 	case uimsg.ImportCollectionMsg:
+		// Close input
+		m.state = uimsg.ViewCollectionList
+
 		importPath := expandTilde(msg.Path)
 		collections, err := importer.ImportFromFile(importPath)
 		if err != nil {
@@ -294,6 +449,9 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		return m, commands.ShowStatusCmd("Import successful", false), true
 
 	case uimsg.ExportCollectionMsg:
+		// Close input
+		m.state = uimsg.ViewCollectionList
+
 		if m.currentCollection == nil {
 			return m, commands.ShowStatusCmd("No collection selected to export", true), true
 		}
@@ -322,6 +480,25 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 
 	case uimsg.DuplicateRequestMsg:
 		return m, commands.DuplicateRequestCmd(msg.CollectionName, msg.RequestName), true
+
+	case uimsg.RequestDuplicatedMsg:
+		return m, tea.Batch(
+			commands.ShowStatusCmd("Request duplicated", false),
+			commands.LoadCollectionsCmd(),
+		), true
+
+	case uimsg.EnvSavedMsg:
+		return m, tea.Batch(
+			commands.ShowStatusCmd("Environment saved", false),
+			func() tea.Msg { return uimsg.BackMsg{} },
+			commands.LoadEnvsCmd(),
+		), true
+
+	case uimsg.EnvDeletedMsg:
+		return m, tea.Batch(
+			commands.ShowStatusCmd("Environment deleted", false),
+			commands.LoadEnvsCmd(),
+		), true
 
 	case uimsg.RequestSaveResponseMsg:
 		m.state = uimsg.ViewInput

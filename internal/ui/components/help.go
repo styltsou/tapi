@@ -117,18 +117,22 @@ func (m HelpOverlayModel) View() string {
 
 	categories := getHelpCategories()
 
+	bg := styles.DarkGray
 	keyStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#7aa2f7")).
+		Background(bg).
 		Bold(true).
 		Width(16).
 		Align(lipgloss.Right)
 
 	descStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#a9b1d6")).
+		Background(bg).
 		PaddingLeft(2)
 
 	catTitleStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#e0af68")).
+		Background(bg).
 		Bold(true).
 		MarginTop(1).
 		MarginBottom(0)
@@ -152,19 +156,18 @@ func (m HelpOverlayModel) View() string {
 				keyStyle.Render(b.key),
 				descStyle.Render(b.desc),
 			)
-			sb.WriteString(line + "\n")
+			// Add background to the whole line to be safe
+			sb.WriteString(lipgloss.NewStyle().Background(bg).Render(line) + "\n")
 		}
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(styles.Gray).Render("Press ? or ESC to close"))
+	sb.WriteString(lipgloss.NewStyle().Foreground(styles.Gray).Background(bg).Render("Press ? or ESC to close"))
 
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7D56F4")).
-		Padding(1, 3).
-		Width(min(50, m.Width-4)).
-		Background(lipgloss.Color("#1a1b26"))
-
-	return boxStyle.Render(sb.String())
+	width := min(50, m.Width-4)
+	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	
+	content := styles.Solidify(sb.String(), width, bgStyle)
+	
+	return styles.ModalStyle.Render(content)
 }

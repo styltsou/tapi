@@ -119,6 +119,20 @@ func (m *RequestModel) SetSize(width, height int) {
 	m.Width = width
 	m.Height = height
 	m.bodyInput.SetWidth(width - 4)
+	
+	// Adaptive height for body input based on total height
+	// We estimate other elements take ~10-15 lines depending on sections
+	// This is a rough heuristic.
+	// Minimum body height 3, Max whatever fits.
+	
+	// Header(2) + Method/URL(2) + Params(min 3) + Headers(min 3) = ~10
+	estimatedOverhead := 12
+	if m.authEnabled {
+		estimatedOverhead += 4
+	}
+	
+	availableForBody := max(3, height - estimatedOverhead)
+	m.bodyInput.SetHeight(availableForBody)
 }
 
 func (m *RequestModel) LoadRequest(req storage.Request, baseURL string) {
@@ -162,7 +176,32 @@ func (m *RequestModel) LoadRequest(req storage.Request, baseURL string) {
 
 	m.focusedSection = SectionURL
 	m.focusedIndex = 1 // Focus URL
+	m.focusedSection = SectionURL
+	m.focusedIndex = 1 // Focus URL
 	m.updateFocus()
+}
+
+// Clear resets the request model to an empty state
+func (m *RequestModel) Clear() {
+	m.request = storage.Request{}
+	m.BaseURL = ""
+	m.methodIndex = 0
+	m.pathInput.SetValue("")
+	m.bodyInput.SetValue("")
+	m.authUsername.SetValue("")
+	m.authPassword.SetValue("")
+	m.authEnabled = false
+	m.pathParamsInputs = []KVInput{}
+	m.headerInputs = []KVInput{newEmptyKVInput()}
+	m.queryInputs = []KVInput{newEmptyKVInput()}
+	m.focusedSection = SectionURL
+	m.focusedIndex = 1
+	m.updateFocus()
+}
+
+// GetRequestName returns the name of the currently loaded request
+func (m RequestModel) GetRequestName() string {
+	return m.request.Name
 }
 
 func (m *RequestModel) addRow(list *[]KVInput, k, v string) {

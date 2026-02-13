@@ -62,7 +62,9 @@ func (m *ResponseModel) SetSize(width, height int) {
 	m.Width = width
 	m.Height = height
 	m.viewport.Width = width - 4
-	m.viewport.Height = height - 10
+	// Adjust viewport height. We reserve a bit of space for search bar if needed,
+	// but mostly it's just the pane.
+	m.viewport.Height = max(1, height-2)
 }
 
 func (m *ResponseModel) SetLoading(loading bool) {
@@ -89,6 +91,14 @@ func (m *ResponseModel) clearSearch() {
 	m.matches = nil
 	m.currentMatch = 0
 	m.searchInput.SetValue("")
+}
+
+// Clear resets the response view
+func (m *ResponseModel) Clear() {
+	m.response = nil
+	m.request = storage.Request{}
+	m.clearSearch()
+	m.viewport.SetContent(styles.DimStyle.Render("No response yet. Execute a request to see results."))
 }
 
 // findMatches performs case-insensitive search on the raw body text

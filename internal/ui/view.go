@@ -22,32 +22,33 @@ func (m Model) View() string {
 		)
 	}
 
-	// Welcome screen
-	if m.state == uimsg.ViewWelcome {
-		return m.welcome.View()
+	// Determine the base view (Welcome screen vs Dashboard)
+	var baseView string
+	if m.state == uimsg.ViewWelcome || (m.state == uimsg.ViewInput && m.currentCollection == nil) {
+		baseView = m.welcome.View()
+	} else {
+		// 1. Header
+		header := m.viewHeader()
+
+		// Tab Bar
+		tabBar := m.viewTabBar()
+
+		// 2. Dashboard Content
+		dashboard := m.viewDashboard()
+
+		// 3. Status Bar
+		bar := m.viewStatusBar()
+
+		// Final Assembly (Base UI)
+		baseView = lipgloss.JoinVertical(lipgloss.Left,
+			header,
+			tabBar,
+			dashboard,
+			bar,
+		)
 	}
 
-	// 1. Header
-	header := m.viewHeader()
-
-	// Tab Bar
-	tabBar := m.viewTabBar()
-
-	// 2. Dashboard Content
-	dashboard := m.viewDashboard()
-
-	// 3. Status Bar
-	bar := m.viewStatusBar()
-
-	// Final Assembly
-	fullView := lipgloss.JoinVertical(lipgloss.Left,
-		header,
-		tabBar,
-		dashboard,
-		bar,
-	)
-
-	// Modals (Overlays)
+	// Overlays (Modals, Menus, Command Palette)
 	var overlay string
 	if m.helpOverlay.Visible {
 		overlay = m.helpOverlay.View()
@@ -59,25 +60,53 @@ func (m Model) View() string {
 		overlay = m.envEditor.View()
 	} else if m.collectionSelector.Visible {
 		overlay = m.collectionSelector.View()
+	} else if m.mode == ModeCommand {
+		overlay = styles.CommandPaletteStyle.
+			Width(min(60, m.Width-4)).
+			Render(m.commandInput.View())
+	} else if m.state == uimsg.ViewInput {
+		overlay = m.input.View()
 	}
 
 	if overlay != "" {
-		return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, overlay,
-			lipgloss.WithWhitespaceBackground(lipgloss.Color("#111111")),
-		)
+		// Calculate position
+		overlayW := lipgloss.Width(overlay)
+		overlayH := lipgloss.Height(overlay)
+		
+		x := (m.Width - overlayW) / 2
+		y := (m.Height - overlayH) / 2
+		
+		// If it's command mode, place it slightly lower
+		if m.mode == ModeCommand {
+			y = m.Height - overlayH - 1
+		}
+		
+		baseView = placeOverlay(baseView, overlay, x, y)
 	}
 
-	// Input prompt floats on top of the current view (transparent overlay)
-	if m.state == uimsg.ViewInput {
-		inputOverlay := m.input.View()
-		return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, inputOverlay,
-			lipgloss.WithWhitespaceForeground(lipgloss.Color("#333333")),
-			lipgloss.WithWhitespaceChars("░"),
-		)
+	// Render notifications in top-right corner
+	if len(m.notifications) > 0 {
+		var notifStr string
+		for i, n := range m.notifications {
+			style := styles.NotificationStyle
+			if !n.IsError {
+				style = style.Background(styles.PrimaryColor)
+			}
+			notifStr += style.Render(n.Message)
+			if i < len(m.notifications)-1 {
+				notifStr += "\n"
+			}
+		}
+
+		notifW := lipgloss.Width(notifStr)
+		x := m.Width - notifW - 1
+		y := 1 // Top margin
+		baseView = placeOverlay(baseView, notifStr, x, y)
 	}
 
-	return fullView
+	return baseView
 }
+
 
 
 // ========================================
@@ -124,28 +153,57 @@ func (m Model) viewTabBar() string {
 }
 
 func (m Model) viewDashboard() string {
-	sStyle, rStyle, respStyle := styles.InactivePaneStyle, styles.InactivePaneStyle, styles.InactivePaneStyle
-	switch m.focusedPane {
-	case PaneCollections:
-		sStyle = styles.ActivePaneStyle
-	case PaneRequest:
-		rStyle = styles.ActivePaneStyle
-	case PaneResponse:
-		respStyle = styles.ActivePaneStyle
+	// Determine styles based on focus
+	sStyle := styles.SidebarStyle
+	rStyle := styles.RequestPaneStyle
+	respStyle := styles.ResponsePaneStyle
+
+	if m.focusedPane == PaneCollections {
+		sStyle = sStyle.BorderForeground(styles.ActiveBorderColor)
+	} else {
+		sStyle = sStyle.BorderForeground(styles.InactiveBorderColor)
 	}
+
+	if m.focusedPane == PaneRequest {
+		rStyle = rStyle.BorderForeground(styles.ActiveBorderColor)
+	} else {
+		rStyle = rStyle.BorderForeground(styles.InactiveBorderColor)
+	}
+
+	// Response pane might not have a visible border in this layout (except maybe top if we added it),
+	// or we just highlight the header.
+	// For now, let's keep it simple.
 
 	var sidebar string
 	if m.sidebarVisible {
 		sidebar = sStyle.Width(m.collections.Width).Height(m.collections.Height).Render(m.collections.View())
 	}
-	request := rStyle.Width(m.request.Width).Height(m.request.Height).Render(m.request.View())
-	response := respStyle.Width(m.response.Width).Height(m.response.Height).Render(m.response.View())
+	requestView := m.request.View()
+	responseView := m.response.View()
+
+	// Add headers
+	// For headers to look right with partial borders, they should probably span the full width
+	// minus the border width.
+	
+	reqHeader := styles.PaneHeaderStyle.Width(m.request.Width - 2).Render("REQUEST") 
+	respHeader := styles.PaneHeaderStyle.Width(m.response.Width - 2).Render("RESPONSE")
+
+	request := rStyle.Width(m.request.Width).Height(m.request.Height).Render(
+		lipgloss.JoinVertical(lipgloss.Left, reqHeader, requestView),
+	)
+	response := respStyle.Width(m.response.Width).Height(m.response.Height).Render(
+		lipgloss.JoinVertical(lipgloss.Left, respHeader, responseView),
+	)
 
 	var dashboard string
+	
+	// Stack Request and Response vertically
+	content := lipgloss.JoinVertical(lipgloss.Left, request, response)
+
 	if m.sidebarVisible {
-		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, request, response)
+		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 	} else {
-		dashboard = lipgloss.JoinHorizontal(lipgloss.Top, request, response)
+		dashboard = content
 	}
 	
 	// Apply Main Layout padding
@@ -171,11 +229,21 @@ func (m Model) viewStatusBar() string {
 	}
 	contextBlock := styles.StatusBarContextStyle.Render(ctx)
 	
+	// Persistent error indicator
+	var errorBlock string
+	if len(m.loadErrors) > 0 {
+		errorBlock = styles.StatusBarInfoStyle.
+			Background(styles.ErrorColor).
+			Foreground(styles.White).
+			Padding(0, 1).
+			Render(fmt.Sprintf("! %d Errors", len(m.loadErrors)))
+	}
+
 	helpView := m.help.View(m.keys)
 	helpBlock := styles.StatusBarInfoStyle.Render(helpView)
-	
-	wSoFar := lipgloss.Width(logo) + lipgloss.Width(contextBlock) + lipgloss.Width(helpBlock)
-	statusWidth := max(0, m.Width - wSoFar - 4) // Adjust for padding
+
+	wSoFar := lipgloss.Width(logo) + lipgloss.Width(modeIndicator) + lipgloss.Width(contextBlock) + lipgloss.Width(helpBlock) + lipgloss.Width(errorBlock)
+	statusWidth := max(0, m.Width - wSoFar)
 	
 	statusText := m.statusText
 	if statusText == "" {
@@ -187,16 +255,6 @@ func (m Model) viewStatusBar() string {
 		statusStyle = statusStyle.Background(styles.ErrorColor).Foreground(styles.White)
 	}
 	statusBlock := statusStyle.Render(statusText)
-	
-	// Persistent error indicator
-	var errorBlock string
-	if len(m.loadErrors) > 0 {
-		errorBlock = styles.StatusBarInfoStyle.
-			Background(styles.ErrorColor).
-			Foreground(styles.White).
-			Padding(0, 1).
-			Render(fmt.Sprintf("! %d Errors", len(m.loadErrors)))
-	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
 		logo,
@@ -207,7 +265,3 @@ func (m Model) viewStatusBar() string {
 		helpBlock,
 	)
 }
-
-
-
-

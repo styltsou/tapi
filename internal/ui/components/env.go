@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/styltsou/tapi/internal/storage"
 )
 
@@ -21,9 +22,17 @@ type EnvModel struct {
 }
 
 func NewEnvModel() EnvModel {
-	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	d := list.NewDefaultDelegate()
+	d.Styles.SelectedTitle = styles.ModalSelectedStyle
+	d.Styles.SelectedDesc = styles.ModalSelectedStyle.Copy().Foreground(styles.Gray)
+	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy().Background(styles.DarkGray)
+	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Background(styles.DarkGray).Foreground(styles.Gray)
+
+	l := list.New([]list.Item{}, d, 0, 0)
 	l.Title = "Select Environment"
 	l.SetShowHelp(false)
+	l.Styles.Title = styles.TitleStyle.Copy().Background(styles.DarkGray).Foreground(styles.PrimaryColor)
+
 
 	return EnvModel{
 		list:    l,
@@ -110,8 +119,12 @@ func (m EnvModel) View() string {
 		return ""
 	}
 
-	// Centered modal styling
-	return styles.ModalStyle.Render(m.list.View())
+	width := m.Width / 2
+	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	
+	content := styles.Solidify(m.list.View(), width, bgStyle)
+	
+	return styles.ModalStyle.Render(content)
 }
 
 // envItem implements list.Item interface

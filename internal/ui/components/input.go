@@ -67,19 +67,18 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 }
 
 func (m InputModel) View() string {
-	// Minimal floating prompt — LazyVim command-line style
-	inputStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(styles.PrimaryColor).
-		Padding(0, 2).
-		Width(50)
+	width := 50
+	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
 
 	titleLine := lipgloss.NewStyle().
 		Foreground(styles.PrimaryColor).
+		Background(styles.DarkGray).
 		Bold(true).
 		Render(m.Title)
 
-	hintLine := styles.DimStyle.Render("Enter: confirm  Esc: cancel")
+	hintLine := styles.DimStyle.Copy().
+		Background(styles.DarkGray).
+		Render("Enter: confirm  Esc: cancel")
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		titleLine,
@@ -87,7 +86,7 @@ func (m InputModel) View() string {
 		hintLine,
 	)
 
-	return inputStyle.Render(content)
+	return styles.ModalStyle.Copy().Render(styles.Solidify(content, width, bgStyle))
 }
 
 func (m *InputModel) SetSize(width, height int) {

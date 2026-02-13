@@ -101,13 +101,76 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 		}
 	}
 
+	// --- Command Mode ---
+	if m.mode == ModeCommand {
+		switch msg.String() {
+		case "enter":
+			cmdStr := m.commandInput.Value()
+			m.mode = ModeNormal
+			m.commandInput.SetValue(":")
+			m.commandInput.Blur()
+			return m.executeCommand(cmdStr)
+		case "esc":
+			m.mode = ModeNormal
+			m.commandInput.SetValue(":")
+			m.commandInput.Blur()
+			return m, nil, true
+		}
+		
+		var cmd tea.Cmd
+		m.commandInput, cmd = m.commandInput.Update(msg)
+		return m, cmd, true
+	}
+
 	// --- Normal Mode ---
 	if m.mode == ModeNormal {
+		// specific check for Collection Filtering
+		// If filtering, we want to pass keys to the list (including 'q')
+		if m.focusedPane == PaneCollections && m.collections.IsFiltering() {
+			// Do not intercept keys, let them fall through to Update -> m.collections.Update
+			// But we might want to catch 'esc' to stop filtering? 
+			// The list component handles 'esc' to stop filtering internally.
+			// So we just return false here to let it route to the component.
+			return m, nil, false
+		}
+
 		switch msg.String() {
-		case " ":
+		case ":":
+			m.mode = ModeCommand
+			m.commandInput.SetValue("")
+			m.commandInput.Focus()
+			return m, nil, true
+		case " ": // leader key
 			m.leaderActive = true
 			m.gPending = false
 			return m, nil, true
+		case "q":
+			// No longer quit immediately
+			return m, nil, true
+		case "esc":
+			if m.helpOverlay.Visible {
+				m.helpOverlay.Toggle()
+			}
+			// Swallows ESC to prevent quitting, but allows other components to handle it if focused
+			// actually, returning true here STOPS propagation.
+			// We want ESC to:
+			// 1. Close overlay (handled above)
+			// 2. Deselect/Blur things?
+			// 3. NOT quit.
+			// If we return nil, true -> it stops here.
+			// If we return nil, false -> it goes to components.
+			// Most components handle ESC to cancel/blur.
+			// Bubbles list handles ESC to cancel filtering.
+			// Bubbles textarea handles ESC to blur?
+			// So we should probably let it propagate? 
+			// BUT default tea.Model might quit on ESC if not handled?
+			// No, bubbletea doesn't quit on ESC by default unless we program it to.
+			// The issue "pressing esc or q exits the app" implies somewhere we are returning tea.Quit on Esc.
+			// We removed it from list.KeyMap.Quit.
+			// So now we just need to NOT return tea.Quit here.
+			// If we return false, it goes to m.Update -> specific pane update.
+			return m, nil, false 
+			
 		case "?":
 			m.helpOverlay.Toggle()
 			return m, nil, true
@@ -141,7 +204,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 				}
 				return m, nil, true
 			}
-		case "i", "enter":
+		case "i":
 			// Enter Insert mode
 			m.mode = ModeInsert
 			return m, nil, true

@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // CommandMenuModel handles the spotlight-like searchable command menu
@@ -25,13 +26,10 @@ func (i commandItem) Title() string       { return i.title }
 func (i commandItem) Description() string { return i.desc }
 func (i commandItem) FilterValue() string { return i.title }
 
-// OpenCollectionSelectorMsg signals to open the collection selector
-type OpenCollectionSelectorMsg struct{}
 
 func NewCommandMenuModel() CommandMenuModel {
 	items := []list.Item{
-		commandItem{title: "Toggle Sidebar", desc: "Show/Hide the collection sidebar", action: uimsg.ToggleSidebarMsg{}},
-		commandItem{title: "Change Collection", desc: "Switch to a different collection", action: OpenCollectionSelectorMsg{}},
+		commandItem{title: "Change Collection", desc: "Switch to a different collection", action: uimsg.OpenCollectionSelectorMsg{}},
 		commandItem{title: "Import Collection", desc: "Import from Postman, Insomnia, or cURL", action: uimsg.PromptForInputMsg{
 			Title:       "Import Collection",
 			Placeholder: "Path to file (Postman JSON, Insomnia JSON, or cURL)",
@@ -44,19 +42,21 @@ func NewCommandMenuModel() CommandMenuModel {
 		}},
 		commandItem{title: "Environments", desc: "Manage environment variables", action: uimsg.FocusMsg{Target: uimsg.ViewEnvironments}},
 		commandItem{title: "Copy as cURL", desc: "Copy current request as a cURL command", action: uimsg.CopyAsCurlMsg{}},
-		commandItem{title: "Quit", desc: "Exit the application", action: tea.Quit()},
 	}
 
 	d := list.NewDefaultDelegate()
-	d.Styles.SelectedTitle = styles.SelectedStyle
-	d.Styles.SelectedDesc = styles.SelectedStyle.Copy().Foreground(styles.Gray)
+	d.Styles.SelectedTitle = styles.ModalSelectedStyle
+	d.Styles.SelectedDesc = styles.ModalSelectedStyle.Copy().Foreground(styles.Gray)
+	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy().Background(styles.DarkGray)
+	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Background(styles.DarkGray).Foreground(styles.Gray)
 
 	l := list.New(items, d, 0, 0)
 	l.Title = "Commands"
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
-	l.Styles.Title = styles.TitleStyle
+	l.Styles.Title = styles.TitleStyle.Copy().Background(styles.DarkGray).Foreground(styles.PrimaryColor)
+	l.Styles.StatusBar = l.Styles.StatusBar.Copy().Background(styles.DarkGray)
 
 	return CommandMenuModel{
 		list: l,
@@ -99,5 +99,11 @@ func (m CommandMenuModel) View() string {
 		return ""
 	}
 
-	return styles.ModalStyle.Render(m.list.View())
+	menuWidth := min(50, m.Width-4)
+	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	
+	// Solidify the list view content
+	content := styles.Solidify(m.list.View(), menuWidth, bgStyle)
+	
+	return styles.ModalStyle.Render(content)
 }

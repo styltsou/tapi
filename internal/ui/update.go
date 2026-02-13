@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+
+	"github.com/styltsou/tapi/internal/ui/commands"
 	uimsg "github.com/styltsou/tapi/internal/ui/msg"
 
 	"os"
@@ -87,6 +90,42 @@ func (m *Model) applyCurrentEnv(req storage.Request) storage.Request {
 		req.Headers[k] = storage.Substitute(v, m.currentEnv.Variables)
 	}
 	return req
+}
+
+func (m Model) executeCommand(cmdStr string) (Model, tea.Cmd, bool) {
+	cmdStr = strings.TrimSpace(cmdStr)
+	cmd := cmdStr
+	if strings.HasPrefix(cmdStr, ":") {
+		cmd = strings.TrimPrefix(cmdStr, ":")
+	}
+	
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return m, nil, true
+	}
+	
+	command := parts[0]
+	
+	switch command {
+	case "q", "quit":
+		return m, tea.Quit, true
+	case "w", "write":
+		req, _ := m.request.BuildRequest()
+		return m, func() tea.Msg {
+			return uimsg.SaveRequestMsg{Request: req}
+		}, true
+	case "wq", "x":
+		req, _ := m.request.BuildRequest()
+		return m, tea.Sequence(
+			func() tea.Msg { return uimsg.SaveRequestMsg{Request: req} },
+			tea.Quit,
+		), true
+	case "h", "help":
+		m.helpOverlay.Toggle()
+		return m, nil, true
+	default:
+		return m, commands.ShowStatusCmd(fmt.Sprintf("Unknown command: %s", command), true), true
+	}
 }
 
 // confirmedDeleteEnvMsg is the internal message sent after user confirms env deletion

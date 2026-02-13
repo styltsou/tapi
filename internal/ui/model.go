@@ -8,6 +8,7 @@ import (
 	"github.com/styltsou/tapi/internal/ui/styles"
 
 	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/styltsou/tapi/internal/config"
 	"github.com/styltsou/tapi/internal/http"
@@ -25,8 +26,8 @@ const (
 )
 
 const (
-	minWidth  = 100
-	minHeight = 20
+	minWidth  = 80
+	minHeight = 16
 )
 
 // InputMode represents Normal or Insert mode (Vim-style)
@@ -35,9 +36,17 @@ type InputMode int
 const (
 	ModeNormal InputMode = iota
 	ModeInsert
+	ModeCommand
 )
 
 
+
+// Notification represents a temporary message shown in the corner
+type Notification struct {
+	ID      int
+	Message string
+	IsError bool
+}
 
 // Model is the main application model that manages state and sub-models
 type Model struct {
@@ -60,10 +69,13 @@ type Model struct {
 	tooSmall    bool
 	sidebarVisible bool
 
-	// Vim-style mode
+	// Viper-style mode
 	mode         InputMode
 	leaderActive bool
 	gPending     bool // for gt/gT vim combos
+
+	// Command input (for : commands)
+	commandInput textinput.Model
 
 	// Request tabs
 	tabs      []components.RequestTab
@@ -83,11 +95,20 @@ type Model struct {
 
 	// Collection Load Errors
 	loadErrors []error
+
+	// Notifications
+	notifications       []Notification
+	nextNotificationID int
 }
 
 // NewModel creates a new main model with initial state
 func NewModel(cfg config.Config) Model {
 	styles.ApplyTheme(cfg.Theme)
+
+	ci := textinput.New()
+	ci.Prompt = ":"
+	ci.Placeholder = ""
+	ci.CharLimit = 100
 
 	return Model{
 		state:       uimsg.ViewWelcome,
@@ -97,6 +118,7 @@ func NewModel(cfg config.Config) Model {
 		cfg:         cfg,
 		sidebarVisible: true,
 		mode:         ModeNormal,
+		commandInput: ci, // Initialize command input
 
 		// Initialize sub-models
 		request:     components.NewRequestModel(),

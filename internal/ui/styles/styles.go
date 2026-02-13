@@ -1,6 +1,8 @@
 package styles
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/styltsou/tapi/internal/config"
 )
@@ -82,26 +84,49 @@ var (
 			Padding(0, 1)
 
 	// Dashboard Pane Styles
-	ActivePaneStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(PrimaryColor).
+	PaneStyle = lipgloss.NewStyle().
 			Padding(0, 1)
 
-	InactivePaneStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+	SidebarStyle = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder(), false, true, false, false). // Right border
+			BorderForeground(MidGray).
+			Padding(0, 0)
+
+	RequestPaneStyle = lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder(), false, false, true, false). // Bottom border
 			BorderForeground(MidGray).
 			Padding(0, 1)
 
+	ResponsePaneStyle = lipgloss.NewStyle().
+			Padding(0, 1)
+
+	// Keep these for backward compatibility or strict focus highlighting if needed,
+	// but we might just change the border color of the specific styles dynamically.
+	ActiveBorderColor = PrimaryColor
+	InactiveBorderColor = MidGray
+
 	// Modal Styles
 	ModalStyle = lipgloss.NewStyle().
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(PrimaryColor).
+			Padding(0, 1).
+			Background(DarkGray)
+
+	CommandPaletteStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(PrimaryColor).
-			Padding(1, 2).
+			Padding(0, 1).
 			Background(DarkGray)
+
+	NotificationStyle = lipgloss.NewStyle().
+				Background(ErrorColor).
+				Foreground(White).
+				Padding(0, 2).
+				Bold(true)
 
 	// Main Layout Style
 	MainLayoutStyle = lipgloss.NewStyle().
-			Padding(1, 2)
+			Padding(0, 1)
 
 	// Item styles
 	SelectedStyle = lipgloss.NewStyle().
@@ -111,6 +136,9 @@ var (
 			BorderForeground(PrimaryColor).
 			PaddingLeft(1)
 
+	ModalSelectedStyle = SelectedStyle.Copy().
+				Background(DarkGray)
+
 	DimStyle = lipgloss.NewStyle().
 			Foreground(Gray)
 
@@ -119,6 +147,13 @@ var (
 	ParamStyle = lipgloss.NewStyle().
 			Foreground(AccentColor).
 			Bold(true)
+
+	PaneHeaderStyle = lipgloss.NewStyle().
+			Foreground(White).
+			Background(MidGray).
+			Padding(0, 1).
+			Bold(true).
+			Width(100) // Width will be overridden
 )
 
 // MethodBadge returns a styled badge for an HTTP method
@@ -148,4 +183,15 @@ func MethodBadge(method string) string {
 	}
 
 	return style.Render(method)
+}
+
+// Solidify ensures every line in s is padded to width with the style's background.
+func Solidify(s string, width int, style lipgloss.Style) string {
+	lines := strings.Split(s, "\n")
+	var res []string
+	for _, l := range lines {
+		// Render each line individually with fixed width to force background filling
+		res = append(res, style.Copy().Width(width).Render(l))
+	}
+	return strings.Join(res, "\n")
 }

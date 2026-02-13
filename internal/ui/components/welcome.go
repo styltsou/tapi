@@ -76,6 +76,16 @@ func (m WelcomeModel) Update(msg tea.Msg) (WelcomeModel, tea.Cmd) {
 					},
 				}
 			}
+		case "d":
+			if m.cursor < len(m.collections) {
+				col := m.collections[m.cursor]
+				return m, func() tea.Msg {
+					return uimsg.ConfirmActionMsg{
+						Title: "Delete collection: " + col.Name + "?",
+						OnConfirm: uimsg.DeleteCollectionMsg{Name: col.Name},
+					}
+				}
+			}
 		case "q":
 			return m, tea.Quit
 		}
@@ -84,66 +94,126 @@ func (m WelcomeModel) Update(msg tea.Msg) (WelcomeModel, tea.Cmd) {
 }
 
 func (m WelcomeModel) View() string {
-	var sb strings.Builder
+	var (
+		logo          string
+		subtitle      string
+		sectionHeader string
+		content       string
+		hints         string
+	)
 
 	// Logo
 	logoStyle := lipgloss.NewStyle().
 		Foreground(styles.PrimaryColor).
 		Bold(true)
-	sb.WriteString(logoStyle.Render(asciiLogo))
-	sb.WriteString("\n")
+	logo = logoStyle.Render(strings.TrimSpace(asciiLogo))
 
 	subtitleStyle := lipgloss.NewStyle().
 		Foreground(styles.Gray).
 		Italic(true)
-	sb.WriteString(subtitleStyle.Render("        Terminal API Client"))
-	sb.WriteString("\n\n")
+	subtitle = subtitleStyle.Render("Terminal API Client")
 
 	// Section header
 	sectionStyle := lipgloss.NewStyle().
 		Foreground(styles.PrimaryColor).
-		Bold(true)
-	sb.WriteString(sectionStyle.Render("  Recent Collections"))
-	sb.WriteString("\n\n")
+		Bold(true).
+		MarginBottom(1)
+	sectionHeader = sectionStyle.Render("Recent Collections")
+
+	// Calculate max width for collection list to ensure consistent alignment
+	const minListWidth = 40
+	listWidth := minListWidth
+	for _, col := range m.collections {
+		reqCount := fmt.Sprintf("%d requests", len(col.Requests))
+		w := len(col.Name) + len(reqCount) + 4 // +4 for spacing
+		if w > listWidth {
+			listWidth = w
+		}
+	}
 
 	// Collection items
-	normalItem := lipgloss.NewStyle().Foreground(lipgloss.Color("#cccccc")).PaddingLeft(2)
+	var listItems []string
+	
+	// Create styles with dynamic width
+	normalItem := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#cccccc")).
+		PaddingLeft(2).
+		Width(listWidth).
+		MarginBottom(1)
+		
 	activeItem := lipgloss.NewStyle().
 		Foreground(styles.PrimaryColor).
 		Bold(true).
 		Border(lipgloss.ThickBorder(), false, false, false, true).
 		BorderForeground(styles.PrimaryColor).
-		PaddingLeft(1)
+		PaddingLeft(1).
+		Width(listWidth).
+		MarginBottom(1)
 
 	if len(m.collections) == 0 {
-		sb.WriteString(styles.DimStyle.Render("    No collections yet. Create one to get started!"))
-		sb.WriteString("\n\n")
+		listItems = append(listItems, styles.DimStyle.Render("No collections yet. Create one to get started!"))
 	} else {
 		for i, col := range m.collections {
 			reqCount := fmt.Sprintf("%d requests", len(col.Requests))
-			label := fmt.Sprintf("%-30s %s", col.Name, styles.DimStyle.Render(reqCount))
-			if i == m.cursor {
-				sb.WriteString(activeItem.Render(label))
-			} else {
-				sb.WriteString(normalItem.Render(label))
+			// Use spaces to push reqCount to the right, or just simple spacing
+			// For a true "space-between" effect we need to calculate padding manually or use lipgloss.PlaceHorizontal
+			
+			// Simple approach: Name ... (gap) ... Count
+			labelRaw := col.Name
+			countRaw := styles.DimStyle.Render(reqCount)
+			
+			// Calculate available space for padding
+			// We effectively want: "Name <space> Count"
+			// But since we want the whole block centered, we just format it nicely.
+			// Let's use the listWidth we calculated.
+			
+			availableSpace := listWidth - len(col.Name) - lipgloss.Width(reqCount) - 3 // -3 for padding/border diff
+			if availableSpace < 1 {
+				availableSpace = 1
 			}
-			sb.WriteString("\n")
+			
+			label := fmt.Sprintf("%s%s%s", labelRaw, strings.Repeat(" ", availableSpace), countRaw)
+
+			if i == m.cursor {
+				listItems = append(listItems, activeItem.Render(label))
+			} else {
+				listItems = append(listItems, normalItem.Render(label))
+			}
 		}
-		sb.WriteString("\n")
 	}
 
 	// "New Collection" action
-	newLabel := "  + New Collection"
+	newLabel := "+ New Collection"
 	if m.cursor == len(m.collections) {
-		sb.WriteString(activeItem.Render(newLabel))
+		listItems = append(listItems, activeItem.Render(newLabel))
 	} else {
-		sb.WriteString(normalItem.Render(newLabel))
+		listItems = append(listItems, normalItem.Render(newLabel))
 	}
-	sb.WriteString("\n\n")
+
+	content = lipgloss.JoinVertical(lipgloss.Left, listItems...)
 
 	// Hints
-	hintStyle := lipgloss.NewStyle().Foreground(styles.Gray)
-	sb.WriteString(hintStyle.Render("  j/k navigate  •  Enter select  •  q quit"))
+	hintStyle := lipgloss.NewStyle().Foreground(styles.Gray).MarginTop(2)
+	hints = hintStyle.Render("j/k navigate  •  Enter select  •  q quit")
 
-	return lipgloss.Place(m.Width, m.Height, lipgloss.Center, lipgloss.Center, sb.String())
+	// Assemble the full view
+	// We want to center everything horizontally
+	
+	// Utility to center a block horizontally in the available width
+	center := func(s string) string {
+		return lipgloss.PlaceHorizontal(m.Width, lipgloss.Center, s)
+	}
+
+	// Join all parts vertically with some spacing
+	ui := lipgloss.JoinVertical(lipgloss.Center,
+		center(logo),
+		center(subtitle),
+		"\n", // Spacer
+		center(sectionHeader),
+		center(content),
+		center(hints),
+	)
+
+	// Place the entire UI vertically centered in the terminal
+	return lipgloss.PlaceVertical(m.Height, lipgloss.Center, ui)
 }

@@ -114,7 +114,19 @@ type CreateRequestMsg struct {
 	Name string
 }
 
-// DeleteRequestMsg is likely already defined above.
+// RequestCreatedMsg is sent when a request is successfully created
+type RequestCreatedMsg struct {
+	CollectionName string
+	Request        storage.Request
+}
+
+// RequestDeletedMsg is sent when a request is successfully deleted
+type RequestDeletedMsg struct {
+	CollectionName string
+	RequestName    string
+}
+
+// DeleteRequestMsg is sent to delete a request
 // Collection Management Messages
 type CreateCollectionMsg struct {
 	Name string
@@ -124,7 +136,18 @@ type DeleteCollectionMsg struct {
 	Name string
 }
 
+// CollectionDeletedMsg is sent when a collection is successfully deleted
+type CollectionDeletedMsg struct {
+	Name string
+}
+
 type RenameCollectionMsg struct {
+	OldName string
+	NewName string
+}
+
+// CollectionRenamedMsg is sent when a collection is successfully renamed
+type CollectionRenamedMsg struct {
 	OldName string
 	NewName string
 }
@@ -148,6 +171,9 @@ type FocusMsg struct {
 
 // BackMsg is sent to go back to the previous view
 type BackMsg struct{}
+
+// OpenCollectionSelectorMsg signals to open the collection selector modal
+type OpenCollectionSelectorMsg struct{}
 
 // ========================================
 // Collection Messages
@@ -183,6 +209,16 @@ type StatusMsg struct {
 // EnvsLoadedMsg is sent when environments are loaded
 type EnvsLoadedMsg struct {
 	Envs []storage.Environment
+}
+
+// EnvSavedMsg is sent when an environment is successfully saved
+type EnvSavedMsg struct {
+	Env storage.Environment
+}
+
+// EnvDeletedMsg is sent when an environment is successfully deleted
+type EnvDeletedMsg struct {
+	Name string
 }
 
 // LoadingMsg is sent to show/hide loading indicator
@@ -242,8 +278,19 @@ type DuplicateRequestMsg struct {
 	RequestName    string
 }
 
+// RequestDuplicatedMsg is sent when a request is successfully duplicated
+type RequestDuplicatedMsg struct {
+	CollectionName string
+	RequestName    string
+}
+
 // ClearStatusMsg clears the status bar text (used for auto-dismiss)
 type ClearStatusMsg struct{}
 
 // CopyAsCurlMsg triggers copying the current request as a cURL command
 type CopyAsCurlMsg struct{}
+
+// ClearNotificationMsg removes a notification by ID
+type ClearNotificationMsg struct {
+	ID int
+}

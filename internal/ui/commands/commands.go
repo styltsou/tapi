@@ -28,10 +28,10 @@ func DeleteRequestCmd(collectionName, requestName string) tea.Cmd {
 				if err := storage.SaveCollection(collections[i]); err != nil {
 					return uimsg.ErrMsg{Err: err}
 				}
-				return tea.Batch(
-					ShowStatusCmd("Request deleted", false),
-					LoadCollectionsCmd(),
-				)
+				return uimsg.RequestDeletedMsg{
+					CollectionName: collectionName,
+					RequestName:    requestName,
+				}
 			}
 		}
 		return uimsg.ErrMsg{Err: fmt.Errorf("collection %q not found", collectionName)}
@@ -43,10 +43,7 @@ func DeleteCollectionCmd(name string) tea.Cmd {
 		if err := storage.DeleteCollection(name); err != nil {
 			return uimsg.ErrMsg{Err: err}
 		}
-		return tea.Batch(
-			ShowStatusCmd("Collection deleted", false),
-			LoadCollectionsCmd(),
-		)
+		return uimsg.CollectionDeletedMsg{Name: name}
 	}
 }
 
@@ -64,10 +61,7 @@ func RenameCollectionCmd(oldName, newName string) tea.Cmd {
 				if err := storage.SaveCollection(col); err != nil {
 					return uimsg.ErrMsg{Err: err}
 				}
-				return tea.Batch(
-					ShowStatusCmd("Collection renamed", false),
-					LoadCollectionsCmd(),
-				)
+				return uimsg.CollectionRenamedMsg{OldName: oldName, NewName: newName}
 			}
 		}
 		return uimsg.ErrMsg{Err: fmt.Errorf("collection not found")}
@@ -101,10 +95,10 @@ func DuplicateRequestCmd(collectionName, requestName string) tea.Cmd {
 						if err := storage.SaveCollection(collections[i]); err != nil {
 							return uimsg.ErrMsg{Err: err}
 						}
-						return tea.Batch(
-							ShowStatusCmd("Request duplicated", false),
-							LoadCollectionsCmd(),
-						)
+						return uimsg.RequestDuplicatedMsg{
+							CollectionName: collectionName,
+							RequestName:    r.Name + " (copy)",
+						}
 					}
 				}
 			}
@@ -184,14 +178,7 @@ func SaveEnvCmd(env storage.Environment) tea.Cmd {
 		if err := storage.SaveEnvironment(env); err != nil {
 			return uimsg.ErrMsg{Err: err}
 		}
-		return tea.Batch(
-			ShowStatusCmd("Environment saved", false),
-			func() tea.Msg { return uimsg.BackMsg{} },
-			func() tea.Msg {
-				envs, _ := storage.LoadEnvironments()
-				return uimsg.EnvsLoadedMsg{Envs: envs}
-			},
-		)
+		return uimsg.EnvSavedMsg{Env: env}
 	}
 }
 
@@ -200,13 +187,7 @@ func DeleteEnvCmd(name string) tea.Cmd {
 		if err := storage.DeleteEnvironment(name); err != nil {
 			return uimsg.ErrMsg{Err: err}
 		}
-		return tea.Batch(
-			ShowStatusCmd("Environment deleted", false),
-			func() tea.Msg {
-				envs, _ := storage.LoadEnvironments()
-				return uimsg.EnvsLoadedMsg{Envs: envs}
-			},
-		)
+		return uimsg.EnvDeletedMsg{Name: name}
 	}
 }
 
@@ -244,10 +225,10 @@ func CreateRequestCmd(collectionName string, req storage.Request) tea.Cmd {
 			}
 		}
 
-		return tea.Batch(
-			ShowStatusCmd("Request created", false),
-			LoadCollectionsCmd(),
-		)
+		return uimsg.RequestCreatedMsg{
+			CollectionName: collectionName,
+			Request:        req,
+		}
 	}
 }
 

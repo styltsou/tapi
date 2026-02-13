@@ -32,13 +32,18 @@ func (i suggestionItem) Description() string { return i.desc }
 func (i suggestionItem) FilterValue() string { return i.text }
 
 func NewSuggestionModel() SuggestionModel {
-	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	d := list.NewDefaultDelegate()
+	d.Styles.SelectedTitle = styles.ModalSelectedStyle
+	d.Styles.SelectedDesc = styles.ModalSelectedStyle.Copy().Foreground(styles.Gray)
+	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy().Background(styles.DarkGray)
+	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Background(styles.DarkGray).Foreground(styles.Gray)
+
+	l := list.New([]list.Item{}, d, 0, 0)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
-	// Make it compact
-	l.Styles.PaginationStyle = lipgloss.NewStyle().PaddingLeft(2)
+	l.Styles.PaginationStyle = lipgloss.NewStyle().PaddingLeft(2).Background(styles.DarkGray)
 
 	return SuggestionModel{
 		list:    l,
@@ -118,7 +123,11 @@ func (m SuggestionModel) View() string {
 	if !m.Visible {
 		return ""
 	}
-	// Use a distinct style for suggestion popup, maybe reusing styles.ModalStyle but smaller/different position?
-	// For now, styles.ModalStyle is fine.
-	return styles.ModalStyle.Render(m.list.View())
+	
+	width := 30 // Fixed width in SetSize
+	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	
+	content := styles.Solidify(m.list.View(), width, bgStyle)
+	
+	return styles.ModalStyle.Render(content)
 }
