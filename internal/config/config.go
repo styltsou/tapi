@@ -38,26 +38,30 @@ func DefaultConfig() Config {
 }
 
 // Load reads config from ~/.tapi/config.yaml, returning defaults if the file doesn't exist.
-func Load() Config {
+func Load() (Config, error) {
 	cfg := DefaultConfig()
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return cfg
+		return cfg, err
 	}
 
 	path := filepath.Join(homeDir, ".tapi", "config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return cfg // File doesn't exist or unreadable, use defaults
+		// File doesn't exist is not an error, return defaults
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return cfg, err
 	}
 
 	// Parse YAML over defaults (partial overrides work)
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return DefaultConfig() // Corrupt file, use defaults
+		return DefaultConfig(), err
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 // LoadFrom reads config from a specific path (useful for testing)

@@ -47,7 +47,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{
 			key.NewBinding(key.WithKeys(""), key.WithHelp("SPC+c", "collection")),
 			key.NewBinding(key.WithKeys(""), key.WithHelp("SPC+o", "preview")),
-			key.NewBinding(key.WithKeys(""), key.WithHelp("SPC+k", "commands")),
+			key.NewBinding(key.WithKeys(""), key.WithHelp("SPC+m", "menu")),
 			k.Quit,
 		},
 	}

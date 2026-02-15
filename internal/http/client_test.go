@@ -24,7 +24,7 @@ func TestClient_Execute_URLResolution(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient()
+	client := NewClient(10 * time.Second)
 	client.HTTPClient.Timeout = 1 * time.Second
 
 	tests := []struct {
@@ -91,7 +91,7 @@ func TestClient_Execute_RequestData(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient()
+	client := NewClient(10 * time.Second)
 	req := storage.Request{
 		Method: "POST",
 		URL:    server.URL,
@@ -124,7 +124,7 @@ func TestClient_Execute_BasicAuth(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient()
+	client := NewClient(10 * time.Second)
 
 	// Test with Basic Auth
 	req := storage.Request{

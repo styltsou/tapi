@@ -6,6 +6,7 @@ import (
 
 	"strings"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -233,6 +234,17 @@ func (m EnvEditorModel) View() string {
 	content := styles.Solidify(sb.String(), width, bgStyle)
 	
 	return styles.ModalStyle.Render(content)
+}
+
+func (m *EnvEditorModel) SetCursorMode(mode cursor.Mode) tea.Cmd {
+	for i := range m.inputs {
+		m.inputs[i].key.Cursor.SetMode(mode)
+		m.inputs[i].value.Cursor.SetMode(mode)
+	}
+	if mode == cursor.CursorBlink {
+		return textinput.Blink
+	}
+	return nil
 }
 
 type SaveEnvMsg struct {

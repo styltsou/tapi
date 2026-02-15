@@ -1,10 +1,11 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
+
 	uimsg "github.com/styltsou/tapi/internal/ui/msg"
 	"github.com/styltsou/tapi/internal/ui/styles"
-
-	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -24,7 +25,7 @@ func (m Model) View() string {
 
 	// Determine the base view (Welcome screen vs Dashboard)
 	var baseView string
-	if m.state == uimsg.ViewWelcome || (m.state == uimsg.ViewInput && m.currentCollection == nil) {
+	if m.state == uimsg.ViewWelcome || ((m.state == uimsg.ViewInput || m.state == uimsg.ViewConfirm) && m.currentCollection == nil) {
 		baseView = m.welcome.View()
 	} else {
 		// 1. Header
@@ -61,11 +62,45 @@ func (m Model) View() string {
 	} else if m.collectionSelector.Visible {
 		overlay = m.collectionSelector.View()
 	} else if m.mode == ModeCommand {
-		overlay = styles.CommandPaletteStyle.
-			Width(min(60, m.Width-4)).
-			Render(m.commandInput.View())
+		width := min(60, m.Width-4)
+		titleStr := " Cmdline "
+		
+		// Create the palette content without the top border
+		paletteStyle := styles.CommandPaletteStyle.Copy().
+			Border(lipgloss.RoundedBorder(), false, true, true, true).
+			Width(width)
+		
+		paletteContent := paletteStyle.Render(m.commandInput.View())
+		
+		// Measure the ACTUAL width of the rendered block to ensure alignment
+		paletteLines := strings.Split(paletteContent, "\n")
+		actualWidth := width
+		if len(paletteLines) > 0 {
+			actualWidth = lipgloss.Width(paletteLines[0])
+		}
+		
+		// Manually construct the top border with the title
+		border := lipgloss.RoundedBorder()
+		borderStyle := lipgloss.NewStyle().Foreground(styles.PrimaryColor)
+		titleStyle := lipgloss.NewStyle().Foreground(styles.PrimaryColor).Bold(true)
+		
+		renderedTitle := titleStyle.Render(titleStr)
+		titleWidth := lipgloss.Width(renderedTitle)
+		
+		// Calculate side lengths based on ACTUAL width
+		leftLen := (actualWidth - titleWidth) / 2
+		rightLen := actualWidth - titleWidth - leftLen
+		
+		// Construct the top line: [TopLeft][Top...][Title][Top...][TopRight]
+		topLine := borderStyle.Render(border.TopLeft + strings.Repeat(border.Top, leftLen-1)) +
+			renderedTitle +
+			borderStyle.Render(strings.Repeat(border.Top, rightLen-1) + border.TopRight)
+		
+		overlay = lipgloss.JoinVertical(lipgloss.Left, topLine, paletteContent)
 	} else if m.state == uimsg.ViewInput {
 		overlay = m.input.View()
+	} else if m.state == uimsg.ViewConfirm {
+		overlay = m.confirm.View()
 	}
 
 	if overlay != "" {
@@ -76,9 +111,9 @@ func (m Model) View() string {
 		x := (m.Width - overlayW) / 2
 		y := (m.Height - overlayH) / 2
 		
-		// If it's command mode, place it slightly lower
+		// If it's command mode, place it towards the top, but not all the way
 		if m.mode == ModeCommand {
-			y = m.Height - overlayH - 1
+			y = 4
 		}
 		
 		baseView = placeOverlay(baseView, overlay, x, y)
@@ -229,25 +264,20 @@ func (m Model) viewStatusBar() string {
 	}
 	contextBlock := styles.StatusBarContextStyle.Render(ctx)
 	
-	// Persistent error indicator
-	var errorBlock string
-	if len(m.loadErrors) > 0 {
-		errorBlock = styles.StatusBarInfoStyle.
-			Background(styles.ErrorColor).
-			Foreground(styles.White).
-			Padding(0, 1).
-			Render(fmt.Sprintf("! %d Errors", len(m.loadErrors)))
-	}
-
 	helpView := m.help.View(m.keys)
 	helpBlock := styles.StatusBarInfoStyle.Render(helpView)
 
-	wSoFar := lipgloss.Width(logo) + lipgloss.Width(modeIndicator) + lipgloss.Width(contextBlock) + lipgloss.Width(helpBlock) + lipgloss.Width(errorBlock)
+	wSoFar := lipgloss.Width(logo) + lipgloss.Width(modeIndicator) + lipgloss.Width(contextBlock) + lipgloss.Width(helpBlock)
 	statusWidth := max(0, m.Width - wSoFar)
 	
 	statusText := m.statusText
 	if statusText == "" {
-		statusText = "Ready"
+		if m.activeTab >= 0 && m.activeTab < len(m.tabs) {
+			tab := m.tabs[m.activeTab]
+			statusText = fmt.Sprintf("%s %s", tab.Request.Method, tab.Request.URL)
+		} else {
+			statusText = "Ready"
+		}
 	}
 	
 	statusStyle := styles.StatusBarInfoStyle.Width(statusWidth)
@@ -261,7 +291,6 @@ func (m Model) viewStatusBar() string {
 		modeIndicator,
 		contextBlock,
 		statusBlock,
-		errorBlock,
 		helpBlock,
 	)
 }

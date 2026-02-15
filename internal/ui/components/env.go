@@ -32,6 +32,7 @@ func NewEnvModel() EnvModel {
 	l.Title = "Select Environment"
 	l.SetShowHelp(false)
 	l.Styles.Title = styles.TitleStyle.Copy().Background(styles.DarkGray).Foreground(styles.PrimaryColor)
+	l.KeyMap.Quit.SetKeys()
 
 
 	return EnvModel{

@@ -21,46 +21,24 @@ func main() {
 	logger.Logger.Info("Starting TAPI " + Version)
 
 	// Load configuration
-	cfg := config.Load()
-
-	// Ensure collections directory exists
-	collectionsPath, err := storage.GetStoragePath("collections")
+	cfg, err := config.Load()
 	if err != nil {
-		fmt.Printf("Error locating storage path: %v\n", err)
-		os.Exit(1)
+		logger.Logger.Error("Failed to load config, using defaults", "error", err)
 	}
 
-	if err := storage.EnsureDir(collectionsPath); err != nil {
-		fmt.Printf("Error creating storage directory: %v\n", err)
-		os.Exit(1)
-	}
+
+
+
 
 	// First-run experience: create demo collection if none exist
 	collections, _, err := storage.LoadCollections()
 	if err == nil && len(collections) == 0 {
 		logger.Logger.Info("First run detected, creating demo collection")
-		demo := storage.Collection{
-			Name:    "Demo Collection",
-			BaseURL: "https://httpbin.org",
-			Requests: []storage.Request{
-				{
-					Name:   "Get IP",
-					Method: "GET",
-					URL:    "/ip",
-				},
-				{
-					Name:   "Post JSON",
-					Method: "POST",
-					URL:    "/post",
-					Body:   `{"message": "Hello TAPI!"}`,
-					Headers: map[string]string{
-						"Content-Type": "application/json",
-					},
-				},
-			},
-		}
-		if err := storage.SaveCollection(demo); err != nil {
+		if err := storage.CreateDemoCollection(); err != nil {
 			logger.Logger.Error("Failed to create demo collection", "error", err)
+		} else {
+			// Reload collections to include the demo
+			collections, _, _ = storage.LoadCollections()
 		}
 	}
 

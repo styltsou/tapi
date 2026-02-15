@@ -44,10 +44,9 @@ func LoadCollections() ([]Collection, []error, error) {
 	}
 
 	// Ensure directory exists
-	//	if err := EnsureDir(collectionsPath); err != nil {
-	//
-	//return nil, err
-	//}
+	if err := EnsureDir(collectionsPath); err != nil {
+		return nil, nil, err
+	}
 
 	// Find all .yaml files
 	pattern := filepath.Join(collectionsPath, "*.yaml")

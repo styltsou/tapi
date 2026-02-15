@@ -19,6 +19,7 @@ const (
 	ViewEnvironments
 	ViewEnvEditor
 	ViewInput
+	ViewConfirm
 	ViewHelp
 )
 

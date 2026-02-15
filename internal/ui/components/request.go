@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -1000,4 +1001,32 @@ func highlightPathParams(urlStr string) string {
 		}
 	}
 	return strings.Join(parts, "/")
+}
+
+// SetCursorMode sets the cursor mode (blink, static, hide) for all inputs
+func (m *RequestModel) SetCursorMode(mode cursor.Mode) tea.Cmd {
+	var cmds []tea.Cmd
+
+	m.pathInput.Cursor.SetMode(mode)
+	m.bodyInput.Cursor.SetMode(mode)
+	m.authUsername.Cursor.SetMode(mode)
+	m.authPassword.Cursor.SetMode(mode)
+
+	for i := range m.pathParamsInputs {
+		m.pathParamsInputs[i].value.Cursor.SetMode(mode)
+	}
+	for i := range m.headerInputs {
+		m.headerInputs[i].key.Cursor.SetMode(mode)
+		m.headerInputs[i].value.Cursor.SetMode(mode)
+	}
+	for i := range m.queryInputs {
+		m.queryInputs[i].key.Cursor.SetMode(mode)
+		m.queryInputs[i].value.Cursor.SetMode(mode)
+	}
+
+	if mode == cursor.CursorBlink {
+		cmds = append(cmds, textinput.Blink)
+	}
+	
+	return tea.Batch(cmds...)
 }

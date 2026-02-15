@@ -2,6 +2,8 @@ package ui
 
 import (
 	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/styltsou/tapi/internal/storage/exporter"
 	"github.com/styltsou/tapi/internal/ui/commands"
@@ -22,7 +24,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 	}
 
 	// If a modal is open, route to it
-	if m.menu.Visible || m.env.Visible || m.state == uimsg.ViewEnvEditor || m.collectionSelector.Visible || m.state == uimsg.ViewInput {
+	if m.menu.Visible || m.env.Visible || m.state == uimsg.ViewEnvEditor || m.collectionSelector.Visible || m.state == uimsg.ViewInput || m.state == uimsg.ViewConfirm {
 		// Let modals handle their own keys (handled below in routing section of generic Update)
 		return m, nil, false
 	}
@@ -70,7 +72,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 		case "o":
 			m.request.Preview = !m.request.Preview
 			return m, nil, true
-		case "k":
+		case "m":
 			m.menu.Visible = true
 			m.env.Visible = false
 			m.collectionSelector.Visible = false
@@ -107,11 +109,13 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 		case "enter":
 			cmdStr := m.commandInput.Value()
 			m.mode = ModeNormal
+			m.commandInput.Cursor.SetMode(cursor.CursorStatic)
 			m.commandInput.SetValue(":")
 			m.commandInput.Blur()
 			return m.executeCommand(cmdStr)
 		case "esc":
 			m.mode = ModeNormal
+			m.commandInput.Cursor.SetMode(cursor.CursorStatic)
 			m.commandInput.SetValue(":")
 			m.commandInput.Blur()
 			return m, nil, true
@@ -137,9 +141,10 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 		switch msg.String() {
 		case ":":
 			m.mode = ModeCommand
+			m.commandInput.Cursor.SetMode(cursor.CursorBlink)
 			m.commandInput.SetValue("")
 			m.commandInput.Focus()
-			return m, nil, true
+			return m, textinput.Blink, true
 		case " ": // leader key
 			m.leaderActive = true
 			m.gPending = false
@@ -207,7 +212,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 		case "i":
 			// Enter Insert mode
 			m.mode = ModeInsert
-			return m, nil, true
+			cmd := m.request.SetCursorMode(cursor.CursorBlink)
+			return m, cmd, true
 		case "tab":
 			// Cycle focus between panes
 			if m.sidebarVisible {
@@ -254,6 +260,7 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (Model, tea.Cmd, bool) {
 	if m.mode == ModeInsert {
 		if msg.String() == "esc" {
 			m.mode = ModeNormal
+			m.request.SetCursorMode(cursor.CursorStatic)
 			return m, nil, true
 		}
 		// Route all other keys to focused sub-model for text editing

@@ -73,7 +73,7 @@ func getHelpCategories() []helpCategory {
 				{"e", "Toggle sidebar"},
 				{"v", "Environments"},
 				{"c", "Change collection"},
-				{"k", "Command menu"},
+				{"m", "Menu"},
 				{"o", "Preview request"},
 				{"y", "Copy as cURL"},
 				{"w", "Close tab"},

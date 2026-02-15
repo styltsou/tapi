@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	"github.com/styltsou/tapi/internal/ui/styles"
 
 	"sort"
@@ -35,15 +37,18 @@ func NewSuggestionModel() SuggestionModel {
 	d := list.NewDefaultDelegate()
 	d.Styles.SelectedTitle = styles.ModalSelectedStyle
 	d.Styles.SelectedDesc = styles.ModalSelectedStyle.Copy().Foreground(styles.Gray)
-	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy().Background(styles.DarkGray)
-	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Background(styles.DarkGray).Foreground(styles.Gray)
+	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy()
+	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Foreground(styles.Gray)
 
 	l := list.New([]list.Item{}, d, 0, 0)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
-	l.Styles.PaginationStyle = lipgloss.NewStyle().PaddingLeft(2).Background(styles.DarkGray)
+	l.Paginator.ActiveDot = styles.PrimaryColorStyle.Render("■ ")
+	l.Paginator.InactiveDot = styles.DimStyle.Render("□ ")
+	l.Styles.PaginationStyle = lipgloss.NewStyle().PaddingLeft(2)
+	l.KeyMap.Quit.SetKeys()
 
 	return SuggestionModel{
 		list:    l,
@@ -125,9 +130,9 @@ func (m SuggestionModel) View() string {
 	}
 	
 	width := 30 // Fixed width in SetSize
-	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
 	
-	content := styles.Solidify(m.list.View(), width, bgStyle)
+	content := strings.TrimRight(m.list.View(), "\n\r ")
+	content = styles.Solidify(content, width, lipgloss.NewStyle())
 	
-	return styles.ModalStyle.Render(content)
+	return styles.WithBorderTitle(styles.ModalStyle, content, "Variables")
 }

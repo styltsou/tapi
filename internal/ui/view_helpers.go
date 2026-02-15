@@ -32,13 +32,19 @@ func compositeLine(base, overlay string, x int) string {
 		x = 0
 	}
 
+	// If the base line is shorter than x, pad it with spaces first
+	baseWidth := lipgloss.Width(base)
+	if baseWidth < x {
+		base += strings.Repeat(" ", x-baseWidth)
+	}
+
 	overlayWidth := lipgloss.Width(overlay)
-	
 	// We need to slice the base string at visual offsets x and x + overlayWidth.
 	left := truncateVisual(base, x)
 	right := tailVisual(base, x+overlayWidth)
 	
-	return left + overlay + right
+	// Add isolation resets before and after the overlay
+	return left + "\x1b[0m" + overlay + "\x1b[0m" + right
 }
 
 // truncateVisual returns the prefix of s with visual width w.

@@ -57,6 +57,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newInput, inputCmd := m.input.Update(msg)
 		m.input = newInput
 		cmds = append(cmds, inputCmd)
+	} else if m.state == uimsg.ViewConfirm {
+		newConfirm, confirmCmd := m.confirm.Update(msg)
+		m.confirm = newConfirm
+		cmds = append(cmds, confirmCmd)
 	} else {
 		// Dashboard updates
 		switch m.focusedPane {
@@ -89,6 +93,12 @@ func (m *Model) applyCurrentEnv(req storage.Request) storage.Request {
 	for k, v := range req.Headers {
 		req.Headers[k] = storage.Substitute(v, m.currentEnv.Variables)
 	}
+
+	if req.Auth != nil {
+		req.Auth.Username = storage.Substitute(req.Auth.Username, m.currentEnv.Variables)
+		req.Auth.Password = storage.Substitute(req.Auth.Password, m.currentEnv.Variables)
+	}
+
 	return req
 }
 

@@ -109,14 +109,23 @@ var (
 	ModalStyle = lipgloss.NewStyle().
 			Border(lipgloss.ThickBorder()).
 			BorderForeground(PrimaryColor).
-			Padding(0, 1).
-			Background(DarkGray)
+			Padding(0, 1)
+
+	SelectorModalStyle = lipgloss.NewStyle().
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(PrimaryColor).
+			Padding(0, 1)
+
+	ConfirmationModalStyle = lipgloss.NewStyle().
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(ErrorColor).
+			Background(DarkGray).
+			Padding(1, 1)
 
 	CommandPaletteStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(PrimaryColor).
-			Padding(0, 1).
-			Background(DarkGray)
+			Padding(0, 1)
 
 	NotificationStyle = lipgloss.NewStyle().
 				Background(ErrorColor).
@@ -136,8 +145,7 @@ var (
 			BorderForeground(PrimaryColor).
 			PaddingLeft(1)
 
-	ModalSelectedStyle = SelectedStyle.Copy().
-				Background(DarkGray)
+	ModalSelectedStyle = SelectedStyle.Copy()
 
 	DimStyle = lipgloss.NewStyle().
 			Foreground(Gray)
@@ -154,6 +162,9 @@ var (
 			Padding(0, 1).
 			Bold(true).
 			Width(100) // Width will be overridden
+
+	PrimaryColorStyle = lipgloss.NewStyle().Foreground(PrimaryColor)
+	ErrorColorStyle   = lipgloss.NewStyle().Foreground(ErrorColor)
 )
 
 // MethodBadge returns a styled badge for an HTTP method
@@ -186,12 +197,79 @@ func MethodBadge(method string) string {
 }
 
 // Solidify ensures every line in s is padded to width with the style's background.
+// It also ensures that internal ANSI resets (from nested styles) don't create "holes"
+// by re-injecting the background sequence after every reset.
 func Solidify(s string, width int, style lipgloss.Style) string {
+	// Get the background escape sequence by rendering a space and stripping it.
+	renderedSpace := style.Render(" ")
+	spaceIdx := strings.Index(renderedSpace, " ")
+	if spaceIdx == -1 {
+		return style.Width(width).Render(s)
+	}
+	bgSeq := renderedSpace[:spaceIdx]
+
 	lines := strings.Split(s, "\n")
 	var res []string
 	for _, l := range lines {
-		// Render each line individually with fixed width to force background filling
-		res = append(res, style.Copy().Width(width).Render(l))
+		// 1. Pad the raw line to target width
+		w := lipgloss.Width(l)
+		padded := l
+		if w < width {
+			padded += strings.Repeat(" ", width-w)
+		}
+
+		// 2. Render with style
+		rendered := style.Render(padded)
+
+		// 3. Re-inject background after every reset, but avoid at the very end
+		// Handle \x1b[0m, \x1b[m, and other variants if they occur.
+		resets := []string{"\x1b[0m", "\x1b[m", "\x1b[0;0m"}
+		fixed := rendered
+		for _, r := range resets {
+			fixed = strings.ReplaceAll(fixed, r, r+bgSeq)
+		}
+
+		// 4. Clean up any trailing background sequence to prevent leakage
+		fixed = strings.TrimSuffix(fixed, bgSeq)
+
+		res = append(res, fixed)
 	}
 	return strings.Join(res, "\n")
+}
+
+// WithBorderTitle renders a box with the title embedded centered on the top border.
+func WithBorderTitle(style lipgloss.Style, content string, titleStr string) string {
+	border, _, right, bottom, left := style.GetBorder()
+	borderColor := style.GetBorderTopForeground()
+	if borderColor == nil {
+		borderColor = PrimaryColor
+	}
+
+	// Remove top border from original style for content rendering
+	contentStyle := style.Copy().Border(border, false, right, bottom, left)
+	renderedContent := contentStyle.Render(content)
+
+	// Measure ACTUAL width
+	lines := strings.Split(renderedContent, "\n")
+	actualWidth := 0
+	if len(lines) > 0 {
+		actualWidth = lipgloss.Width(lines[0])
+	}
+
+	// Prepare title
+	titleStyle := lipgloss.NewStyle().Foreground(borderColor).Bold(true)
+	renderedTitle := titleStyle.Render(" " + strings.TrimSpace(titleStr) + " ")
+	titleWidth := lipgloss.Width(renderedTitle)
+
+	// Construct top border
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	
+	leftLen := (actualWidth - titleWidth) / 2
+	rightLen := actualWidth - titleWidth - leftLen
+
+	topLine := borderStyle.Render(border.TopLeft + strings.Repeat(border.Top, leftLen-1)) +
+		renderedTitle +
+		borderStyle.Render(strings.Repeat(border.Top, rightLen-1) + border.TopRight)
+
+	return lipgloss.JoinVertical(lipgloss.Left, topLine, renderedContent)
 }

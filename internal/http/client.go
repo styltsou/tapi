@@ -24,12 +24,14 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
-// NewClient creates a new HTTP client with safe defaults
-func NewClient() *Client {
+// NewClient creates a new HTTP client with safe defaults and configurable timeout
+func NewClient(timeout time.Duration) *Client {
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
 	return &Client{
 		HTTPClient: &http.Client{
-			// Align with the 30s context timeout
-			Timeout: 35 * time.Second,
+			Timeout: timeout,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				// Allow up to 10 redirects
 				if len(via) >= 10 {

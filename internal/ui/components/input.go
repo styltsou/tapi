@@ -46,14 +46,14 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEnter:
+		switch msg.String() {
+		case "enter":
 			if m.OnCommitMsg != nil {
 				return m, func() tea.Msg {
 					return m.OnCommitMsg(m.TextInput.Value())
 				}
 			}
-		case tea.KeyEsc:
+		case "esc":
 			if m.OnCancelMsg != nil {
 				return m, func() tea.Msg {
 					return m.OnCancelMsg()
@@ -67,26 +67,17 @@ func (m InputModel) Update(msg tea.Msg) (InputModel, tea.Cmd) {
 }
 
 func (m InputModel) View() string {
-	width := 50
-	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	width := 45 // Slightly narrower for better look
 
-	titleLine := lipgloss.NewStyle().
-		Foreground(styles.PrimaryColor).
-		Background(styles.DarkGray).
-		Bold(true).
-		Render(m.Title)
-
-	hintLine := styles.DimStyle.Copy().
-		Background(styles.DarkGray).
-		Render("Enter: confirm  Esc: cancel")
+	// Ensure the input itself doesn't exceed the width
+	m.TextInput.Width = width - 4
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		titleLine,
 		m.TextInput.View(),
-		hintLine,
 	)
 
-	return styles.ModalStyle.Copy().Render(styles.Solidify(content, width, bgStyle))
+	solidified := styles.Solidify(content, width, lipgloss.NewStyle())
+	return styles.WithBorderTitle(styles.ModalStyle, solidified, m.Title)
 }
 
 func (m *InputModel) SetSize(width, height int) {

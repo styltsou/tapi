@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	uimsg "github.com/styltsou/tapi/internal/ui/msg"
 	"github.com/styltsou/tapi/internal/ui/styles"
 
@@ -47,16 +49,19 @@ func NewCommandMenuModel() CommandMenuModel {
 	d := list.NewDefaultDelegate()
 	d.Styles.SelectedTitle = styles.ModalSelectedStyle
 	d.Styles.SelectedDesc = styles.ModalSelectedStyle.Copy().Foreground(styles.Gray)
-	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy().Background(styles.DarkGray)
-	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Background(styles.DarkGray).Foreground(styles.Gray)
+	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy()
+	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Foreground(styles.Gray)
 
 	l := list.New(items, d, 0, 0)
-	l.Title = "Commands"
+	l.Title = "Menu"
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
+	l.Paginator.ActiveDot = styles.PrimaryColorStyle.Render("■ ")
+	l.Paginator.InactiveDot = styles.DimStyle.Render("□ ")
 	l.Styles.Title = styles.TitleStyle.Copy().Background(styles.DarkGray).Foreground(styles.PrimaryColor)
 	l.Styles.StatusBar = l.Styles.StatusBar.Copy().Background(styles.DarkGray)
+	l.KeyMap.Quit.SetKeys()
 
 	return CommandMenuModel{
 		list: l,
@@ -100,10 +105,11 @@ func (m CommandMenuModel) View() string {
 	}
 
 	menuWidth := min(50, m.Width-4)
-	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	m.list.SetShowTitle(false)
 	
-	// Solidify the list view content
-	content := styles.Solidify(m.list.View(), menuWidth, bgStyle)
+	// Solidify the list view content without a background
+	content := strings.TrimRight(m.list.View(), "\n\r ")
+	content = styles.Solidify(content, menuWidth, lipgloss.NewStyle())
 	
-	return styles.ModalStyle.Render(content)
+	return styles.WithBorderTitle(styles.ModalStyle, content, "Menu")
 }

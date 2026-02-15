@@ -31,6 +31,8 @@ func NewCollectionsModel() CollectionsModel {
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(true)
+	l.Paginator.ActiveDot = styles.PrimaryColorStyle.Render("■ ")
+	l.Paginator.InactiveDot = styles.DimStyle.Render("□ ")
 	l.Styles.Title = styles.TitleStyle
 
 	l.KeyMap.Quit.SetKeys() // Disable default quit keys (q, esc) to handle globally
@@ -113,7 +115,7 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
 					return uimsg.ConfirmActionMsg{
-						Title: "Delete request: " + selected.request.Name + "?",
+						Title: "Delete request: " + styles.ErrorColorStyle.Render(selected.request.Name),
 						OnConfirm: uimsg.DeleteRequestMsg{
 							CollectionName: selected.collection.Name,
 							RequestName:    selected.request.Name,
@@ -126,7 +128,7 @@ func (m CollectionsModel) Update(msg tea.Msg) (CollectionsModel, tea.Cmd) {
 			if selected, ok := m.list.SelectedItem().(requestItem); ok && !selected.isCreate {
 				return m, func() tea.Msg {
 					return uimsg.ConfirmActionMsg{
-						Title:     "Delete collection: " + selected.collection.Name + "?",
+						Title:     "Delete collection: " + styles.ErrorColorStyle.Render(selected.collection.Name),
 						OnConfirm: uimsg.DeleteCollectionMsg{Name: selected.collection.Name},
 					}
 				}

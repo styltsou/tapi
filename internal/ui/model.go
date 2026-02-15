@@ -7,6 +7,7 @@ import (
 	uimsg "github.com/styltsou/tapi/internal/ui/msg"
 	"github.com/styltsou/tapi/internal/ui/styles"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -59,6 +60,7 @@ type Model struct {
 	env         components.EnvModel
 	envEditor   components.EnvEditorModel
 	input       components.InputModel
+	confirm     components.ConfirmationModel
 	menu        components.CommandMenuModel
 	collectionSelector components.CollectionSelectorModel
 	helpOverlay components.HelpOverlayModel
@@ -106,7 +108,8 @@ func NewModel(cfg config.Config) Model {
 	styles.ApplyTheme(cfg.Theme)
 
 	ci := textinput.New()
-	ci.Prompt = ":"
+	ci.Cursor.SetMode(cursor.CursorStatic)
+	ci.Prompt = "> "
 	ci.Placeholder = ""
 	ci.CharLimit = 100
 
@@ -114,7 +117,7 @@ func NewModel(cfg config.Config) Model {
 		state:       uimsg.ViewWelcome,
 		focusedPane: PaneCollections,
 		keys:        keys.DefaultKeyMap(),
-		httpClient:  http.NewClient(),
+		httpClient:  http.NewClient(cfg.TimeoutDuration()),
 		cfg:         cfg,
 		sidebarVisible: true,
 		mode:         ModeNormal,
@@ -128,6 +131,7 @@ func NewModel(cfg config.Config) Model {
 		env:         components.NewEnvModel(),
 		envEditor:   components.NewEnvEditorModel(),
 		input:       components.NewInputModel("", "", nil, nil),
+		confirm:     components.NewConfirmationModel("", nil, nil),
 		menu:        components.NewCommandMenuModel(),
 		collectionSelector: components.NewCollectionSelectorModel(),
 		helpOverlay: components.NewHelpOverlayModel(),

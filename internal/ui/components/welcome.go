@@ -58,7 +58,20 @@ func (m WelcomeModel) Update(msg tea.Msg) (WelcomeModel, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "enter":
+		case "enter", "c":
+			if msg.String() == "c" || m.cursor == len(m.collections) {
+				// "New Collection" selected
+				return m, func() tea.Msg {
+					return uimsg.PromptForInputMsg{
+						Title:       "New Collection",
+						Placeholder: "Enter collection name",
+						OnCommit: func(val string) tea.Msg {
+							return uimsg.CreateCollectionMsg{Name: val}
+						},
+					}
+				}
+			}
+
 			if m.cursor < len(m.collections) {
 				// Selected an existing collection
 				col := m.collections[m.cursor]
@@ -66,22 +79,12 @@ func (m WelcomeModel) Update(msg tea.Msg) (WelcomeModel, tea.Cmd) {
 					return uimsg.CollectionSelectedMsg{Collection: col}
 				}
 			}
-			// "New Collection" selected
-			return m, func() tea.Msg {
-				return uimsg.PromptForInputMsg{
-					Title:       "New Collection",
-					Placeholder: "Enter collection name",
-					OnCommit: func(val string) tea.Msg {
-						return uimsg.CreateCollectionMsg{Name: val}
-					},
-				}
-			}
 		case "d":
 			if m.cursor < len(m.collections) {
 				col := m.collections[m.cursor]
 				return m, func() tea.Msg {
 					return uimsg.ConfirmActionMsg{
-						Title: "Delete collection: " + col.Name + "?",
+						Title: "Delete collection: " + styles.ErrorColorStyle.Render(col.Name),
 						OnConfirm: uimsg.DeleteCollectionMsg{Name: col.Name},
 					}
 				}
@@ -129,6 +132,12 @@ func (m WelcomeModel) View() string {
 		if w > listWidth {
 			listWidth = w
 		}
+	}
+
+	// Also consider "New Collection" width with "c" hint
+	newCollWidth := len("+ New Collection") + 1 + 4 // +1 for "c", +4 for spacing
+	if newCollWidth > listWidth {
+		listWidth = newCollWidth
 	}
 
 	// Collection items
@@ -183,7 +192,16 @@ func (m WelcomeModel) View() string {
 	}
 
 	// "New Collection" action
-	newLabel := "+ New Collection"
+	const newLabelRaw = "+ New Collection"
+	const shortHintRaw = "c"
+	shortHint := styles.DimStyle.Render(shortHintRaw)
+
+	availableSpaceNew := listWidth - len(newLabelRaw) - lipgloss.Width(shortHintRaw) - 3
+	if availableSpaceNew < 1 {
+		availableSpaceNew = 1
+	}
+	newLabel := fmt.Sprintf("%s%s%s", newLabelRaw, strings.Repeat(" ", availableSpaceNew), shortHint)
+
 	if m.cursor == len(m.collections) {
 		listItems = append(listItems, activeItem.Render(newLabel))
 	} else {
@@ -194,7 +212,7 @@ func (m WelcomeModel) View() string {
 
 	// Hints
 	hintStyle := lipgloss.NewStyle().Foreground(styles.Gray).MarginTop(2)
-	hints = hintStyle.Render("j/k navigate  •  Enter select  •  q quit")
+	hints = hintStyle.Render("j/k navigate  •  d delete  •  q quit")
 
 	// Assemble the full view
 	// We want to center everything horizontally

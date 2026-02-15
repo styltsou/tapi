@@ -1,6 +1,8 @@
 package components
 
 import (
+	"strings"
+
 	uimsg "github.com/styltsou/tapi/internal/ui/msg"
 	"github.com/styltsou/tapi/internal/ui/styles"
 
@@ -25,13 +27,16 @@ func NewCollectionSelectorModel() CollectionSelectorModel {
 	d := list.NewDefaultDelegate()
 	d.Styles.SelectedTitle = styles.ModalSelectedStyle
 	d.Styles.SelectedDesc = styles.ModalSelectedStyle.Copy().Foreground(styles.Gray)
-	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy().Background(styles.DarkGray)
-	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Background(styles.DarkGray).Foreground(styles.Gray)
+	d.Styles.NormalTitle = d.Styles.NormalTitle.Copy()
+	d.Styles.NormalDesc = d.Styles.NormalDesc.Copy().Foreground(styles.Gray)
 
 	l := list.New([]list.Item{}, d, 0, 0)
 	l.Title = "Select Collection"
 	l.SetShowHelp(false)
+	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(true)
+	l.Paginator.ActiveDot = styles.PrimaryColorStyle.Render("■ ")
+	l.Paginator.InactiveDot = styles.DimStyle.Render("□ ")
 	l.Styles.Title = styles.TitleStyle.Copy().Background(styles.DarkGray).Foreground(styles.PrimaryColor)
 	
 	return CollectionSelectorModel{
@@ -43,8 +48,25 @@ func NewCollectionSelectorModel() CollectionSelectorModel {
 func (m *CollectionSelectorModel) SetSize(width, height int) {
 	m.Width = width
 	m.Height = height
-	// Modal size
-	m.list.SetSize(width/2, height/2)
+	m.updateListSize()
+}
+
+func (m *CollectionSelectorModel) updateListSize() {
+	numItems := len(m.list.Items())
+	if numItems == 0 {
+		numItems = 4 // Fallback for initial state
+	}
+
+	// Each item in default delegate is 3 lines (2 for text + 1 spacing)
+	neededHeight := numItems * 3
+	if numItems > 0 {
+		neededHeight -= 1 // No spacer after the last item
+	}
+
+	// Constraint: At least 3 collections + New (4 items total = 11 lines)
+	// But not taller than half the screen
+	finalHeight := max(11, min(neededHeight, m.Height/2))
+	m.list.SetSize(m.Width/3, finalHeight)
 }
 
 func (m *CollectionSelectorModel) SetCollections(collections []storage.Collection) {
@@ -54,7 +76,10 @@ func (m *CollectionSelectorModel) SetCollections(collections []storage.Collectio
 	for i, col := range collections {
 		items[i] = collectionItem{col}
 	}
+	// Add New Collection option at the end
+	items = append(items, newCollectionOption{})
 	m.list.SetItems(items)
+	m.updateListSize()
 }
 
 func (m CollectionSelectorModel) Update(msg tea.Msg) (CollectionSelectorModel, tea.Cmd) {
@@ -74,18 +99,25 @@ func (m CollectionSelectorModel) Update(msg tea.Msg) (CollectionSelectorModel, t
 
 		switch msg.String() {
 		case "esc":
-			// If it's the initial screen, maybe quitting is better? 
-			// But generall esc usually closes modals. 
-			// If there is no active collection, we might want to enforce selection.
-			// For now, let's treat it as hide.
 			m.Visible = false
 			return m, nil
 
 		case "enter":
-			if selected, ok := m.list.SelectedItem().(collectionItem); ok {
+			selected := m.list.SelectedItem()
+			if item, ok := selected.(collectionItem); ok {
 				m.Visible = false
 				return m, func() tea.Msg {
-					return uimsg.CollectionSelectedMsg{Collection: selected.collection}
+					return uimsg.CollectionSelectedMsg{Collection: item.collection}
+				}
+			}
+			if _, ok := selected.(newCollectionOption); ok {
+				m.Visible = false
+				return m, func() tea.Msg {
+					return uimsg.PromptForInputMsg{
+						Title:       "New Collection",
+						Placeholder: "Enter collection name",
+						OnCommit:    func(val string) tea.Msg { return uimsg.CreateCollectionMsg{Name: val} },
+					}
 				}
 			}
 		}
@@ -101,12 +133,15 @@ func (m CollectionSelectorModel) View() string {
 		return ""
 	}
 	
-	width := m.Width / 2
-	bgStyle := lipgloss.NewStyle().Background(styles.DarkGray)
+	width := m.Width / 3
 	
-	content := styles.Solidify(m.list.View(), width, bgStyle)
+	// List View (Hide default title)
+	m.list.SetShowTitle(false)
 	
-	return styles.ModalStyle.Render(content)
+	content := strings.TrimRight(m.list.View(), "\n\r ")
+	content = styles.Solidify(content, width, lipgloss.NewStyle())
+	
+	return styles.WithBorderTitle(styles.SelectorModalStyle, content, "Collections")
 }
 
 // collectionItem implements list.Item
@@ -122,3 +157,10 @@ func (i collectionItem) Description() string {
 	return fmt.Sprintf("%d requests", len(i.collection.Requests))
 }
 func (i collectionItem) FilterValue() string { return i.collection.Name }
+
+// newCollectionOption implements list.Item
+type newCollectionOption struct{}
+
+func (i newCollectionOption) Title() string       { return "+ New collection" }
+func (i newCollectionOption) Description() string { return "Create a fresh collection" }
+func (i newCollectionOption) FilterValue() string { return "new collection" }

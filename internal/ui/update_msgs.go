@@ -66,7 +66,18 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 
 	case uimsg.ErrMsg:
 		logger.Logger.Error("Application error", "error", msg.Err)
-		return m, commands.ShowStatusCmd("Error: "+msg.Err.Error(), true), true
+		errStr := msg.Err.Error()
+		message := "Error: " + errStr
+		if strings.Contains(errStr, "timeout") {
+			message = "Request Timed Out (30s)"
+		} else if strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "no such host") {
+			message = "Network Error: Check your connection"
+		}
+		
+		// Send a status message that will be handled below (as an error)
+		return m, func() tea.Msg {
+			return uimsg.StatusMsg{Message: message, IsError: true}
+		}, true
 
 	case uimsg.CopyAsCurlMsg:
 		// Delegate to leader key handler logic
@@ -160,8 +171,13 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		m.welcome.SetCollections(msg.Collections)
 		m.loadErrors = msg.LoadErrors
 		if len(m.loadErrors) > 0 {
-			m.statusText = fmt.Sprintf("Warning: %d collection(s) failed to load", len(m.loadErrors))
-			m.statusIsErr = true
+			msg := uimsg.StatusMsg{
+				Message: fmt.Sprintf("Warning: %d collection(s) failed to load", len(m.loadErrors)),
+				IsError: true,
+			}
+			newM, cmd, _ := m.handleAppMsg(msg)
+			m = newM
+			return m, cmd, true
 		}
 		
 		// Refresh current collection if active
@@ -365,11 +381,10 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		col := storage.Collection{Name: msg.Name, Requests: []storage.Request{}}
 		if err := storage.SaveCollection(col); err != nil {
-			m.statusText = "Error: " + err.Error()
-			m.statusIsErr = true
-			return m, nil, true
+			return m, commands.ShowStatusCmd("Error: "+err.Error(), true), true
 		}
 		// Select the newly created collection and go to workspace
+		m.state = uimsg.ViewCollectionList
 		return m, func() tea.Msg {
 			return uimsg.CollectionSelectedMsg{Collection: col}
 		}, true
@@ -384,10 +399,8 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		return m, commands.ShowStatusCmd(fmt.Sprintf("Env: %s", msg.NewEnv.Name), false), true
 
 	case uimsg.StatusMsg:
-		m.statusText = msg.Message
-		m.statusIsErr = msg.IsError
-
 		if msg.IsError {
+			// Errors go to notifications, not status bar
 			m.nextNotificationID++
 			notif := Notification{
 				ID:      m.nextNotificationID,
@@ -396,14 +409,18 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 			}
 			m.notifications = append(m.notifications, notif)
 
-			// Clear notification after 5 seconds
-			return m, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
+			// Clear notification after 3 seconds
+			return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
 				return uimsg.ClearNotificationMsg{ID: notif.ID}
 			}), true
 		}
 
-		// Auto-dismiss status after 3 seconds
-		return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		// Success/Info messages go to status bar
+		m.statusText = msg.Message
+		m.statusIsErr = false
+
+		// Auto-dismiss status after 2 seconds
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 			return uimsg.ClearStatusMsg{}
 		}), true
 
@@ -462,21 +479,14 @@ func (m Model) handleAppMsg(msg tea.Msg) (Model, tea.Cmd, bool) {
 		return m, commands.ShowStatusCmd("Exported to "+exportPath, false), true
 
 	case uimsg.ConfirmActionMsg:
-		m.state = uimsg.ViewInput
-		confirmAction := msg.OnConfirm
-		m.input = components.NewInputModel(
+		m.state = uimsg.ViewConfirm
+		m.confirm = components.NewConfirmationModel(
 			msg.Title,
-			"Type 'yes' to confirm",
-			func(val string) tea.Msg {
-				if val == "yes" {
-					return confirmAction
-				}
-				return uimsg.BackMsg{}
-			},
-			func() tea.Msg { return uimsg.BackMsg{} },
+			msg.OnConfirm,
+			uimsg.BackMsg{},
 		)
-		m.input.SetSize(m.Width, m.Height)
-		return m, m.input.Init(), true
+		m.confirm.SetSize(m.Width, m.Height)
+		return m, m.confirm.Init(), true
 
 	case uimsg.DuplicateRequestMsg:
 		return m, commands.DuplicateRequestCmd(msg.CollectionName, msg.RequestName), true
