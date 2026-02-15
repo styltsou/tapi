@@ -65,9 +65,9 @@ func TestExecuteCommand(t *testing.T) {
 					// but usually tea.Quit returns a specific message or is a specialized function.
 					// tea.Quit() returns a tea.QuitMsg. 
 					// We can check if the cmd produces tea.QuitMsg.
-					msg := cmd()
-					if _, ok := msg.(tea.QuitMsg); !ok {
-						t.Errorf("Expected tea.QuitMsg, got %T", msg)
+					message := cmd()
+					if _, ok := message.(tea.QuitMsg); !ok {
+						t.Errorf("Expected tea.QuitMsg, got %T", message)
 					}
 				}
 			}
@@ -95,5 +95,65 @@ func TestExecuteCommand(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestKeyHandling(t *testing.T) {
+	cfg := config.DefaultConfig()
+	m := NewModel(cfg)
+
+	// Ensure we start in Normal mode, Request pane, and NOT in Welcome screen
+	m.state = msg.ViewCollectionList
+	m.mode = ModeNormal
+	m.focusedPane = PaneRequest
+
+	// Test 1: 'i' to enter insert mode
+	msg1 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}}
+	newM, _ := m.Update(msg1)
+	m1 := newM.(Model)
+	if m1.mode != ModeInsert {
+		t.Errorf("Expected ModeInsert after 'i', got %v", m1.mode)
+	}
+
+	// Test 2: 'Esc' to exit insert mode
+	msg2 := tea.KeyMsg{Type: tea.KeyEsc}
+	newM, _ = m1.Update(msg2)
+	m2 := newM.(Model)
+	if m2.mode != ModeNormal {
+		t.Errorf("Expected ModeNormal after Esc, got %v", m2.mode)
+	}
+
+	// Test 3: Tab to cycle panes
+	// Start at PaneRequest
+	m2.focusedPane = PaneRequest
+	msg3 := tea.KeyMsg{Type: tea.KeyTab}
+	
+	// Tab -> PaneResponse
+	newM, _ = m2.Update(msg3)
+	m3 := newM.(Model)
+	if m3.focusedPane != PaneResponse {
+		t.Errorf("Expected PaneResponse after Tab, got %v", m3.focusedPane)
+	}
+
+	// Tab -> PaneCollections
+	newM, _ = m3.Update(msg3)
+	m4 := newM.(Model)
+	if m4.focusedPane != PaneCollections {
+		t.Errorf("Expected PaneCollections after 2nd Tab, got %v", m4.focusedPane)
+	}
+
+	// Tab -> Back to PaneRequest
+	newM, _ = m4.Update(msg3)
+	m5 := newM.(Model)
+	if m5.focusedPane != PaneRequest {
+		t.Errorf("Expected PaneRequest after 3rd Tab, got %v", m5.focusedPane)
+	}
+
+	// Test 4: Leader Key (Space)
+	msgSpace := tea.KeyMsg{Type: tea.KeySpace}
+	newM, _ = m5.Update(msgSpace)
+	m6 := newM.(Model)
+	if !m6.leaderActive {
+		t.Error("Expected leaderActive to be true after Space")
 	}
 }

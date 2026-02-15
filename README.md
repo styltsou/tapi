@@ -1,5 +1,7 @@
 # TAPI — Terminal API Client
 
+![CI](https://github.com/styltsou/tapi/actions/workflows/ci.yml/badge.svg)
+
 > A keyboard-driven, Vim-style terminal API client built in Go with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
 ```
@@ -66,7 +68,8 @@ TAPI uses Vim-style **Normal** and **Insert** modes. The current mode is shown i
 | `Space v` | Toggle environments |
 | `Space o` | Toggle preview (variable substitution) |
 | `Space p` | Focus request pane |
-| `Space k` | Open command menu |
+| `Space p` | Focus request pane |
+| `Space m` | Open command menu |
 | `Space q` | Quit |
 
 ### Navigation (Normal mode)
